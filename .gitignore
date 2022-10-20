@@ -1,0 +1,8 @@
+*.egg-info/
+__pycache__/
+results/
+tests/
+video/
+
+*.swp
+*.sh
