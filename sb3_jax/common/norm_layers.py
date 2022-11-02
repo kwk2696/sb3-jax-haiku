@@ -50,7 +50,8 @@ class BaseNormLayer(ABC):
         """jit method for update_stats."""
     
     def save(self, save_path: str) -> None:
-        with open(os.path.join(save_path, "norm_layer.zip"), "wb") as fp:
+        os.makedirs(save_path, exist_ok=True)
+        with open(os.path.join(save_path, "norm_layer.zip"), "wb+") as fp:
             pickle.dump(self, fp)
     
     @staticmethod

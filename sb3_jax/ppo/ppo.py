@@ -219,7 +219,7 @@ class PPO(OnPolicyAlgorithm):
         
         mean_actions, log_std = self.policy._actor(observations, params)
         log_prob = self.policy.action_dist_fn.log_prob(actions, mean_actions, log_std)
-        entropy = self.policy.action_dist_fn.entropy(log_std)
+        entropy = self.policy.action_dist_fn.entropy(mean_actions, log_std)
         values = self.policy._value(observations, params)
         values = values.flatten()
 

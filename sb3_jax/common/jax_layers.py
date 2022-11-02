@@ -59,17 +59,21 @@ class MLP(hk.Module):
         net_arch: List[int], 
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu,
         squash_output: bool = False,
+        drop_output: float = None,
     ):
         super(MLP, self).__init__()
         self.net_arch = net_arch
         self.activation_fn = activation_fn
         self.squash_output = squash_output
+        self.drop_output = drop_output
 
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, x: jnp.ndarray, rng: int = None) -> jnp.ndarray:
         for i, size in enumerate(self.net_arch):
             x = hk.Linear(size, **init_weights())(x)
             if i + 1 < len(self.net_arch):
                 x = self.activation_fn(x)
+                if self.drop_output is not None:
+                    x = hk.dropout(rng, self.drop_output, x)
         if self.squash_output:
             x = nn.tanh(x)
         return x
@@ -80,11 +84,12 @@ def create_mlp(
     net_arch: List[int], 
     activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu,
     squash_output: bool = False,
+    drop_output: float = None,
 ) -> hk.Module:
     if output_dim > 0:
         net_arch = list(net_arch)
         net_arch.append(output_dim)
-    return MLP(net_arch, activation_fn, squash_output)
+    return MLP(net_arch, activation_fn, squash_output, drop_output)
 
 
 def get_actor_critic_arch(net_arch: Union[List[int], Dict[str, List[int]]]) -> Tuple[List[int], List[int]]:

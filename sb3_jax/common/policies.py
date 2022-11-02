@@ -17,8 +17,8 @@ from jax import nn
 
 from sb3_jax.common.distributions import (
     Distribution,
-    DiagGaussianDistribution,
     DiagGaussianDistributionFn,
+    CategoricalDistributionFn, 
     make_proba_distribution,
 )
 from sb3_jax.common.preprocessing import get_action_dim, is_image_space, maybe_transpose, preprocess_obs
@@ -315,6 +315,8 @@ class ActorCriticPolicy(BasePolicy):
         if isinstance(self.action_dist_fn, DiagGaussianDistributionFn):
             action_dim = get_action_dim(self.action_space)
             self.dist_kwargs.update(dict(log_std_init=self.log_std_init))
+        elif isinstance(self.action_dist_fn, CategoricalDistributionFn):
+            action_dim = self.action_space.n
         else:
             raise NotImplementedError(f"Unsupported distribution '{self.action_dist_fn}'.")
         
@@ -343,6 +345,7 @@ class ActorCriticPolicy(BasePolicy):
         actions = self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
         values = self._value(observation, self.params)
         log_prob = self.action_dist_fn.log_prob(actions, mean_actions, log_std)
+        
         return actions, values, log_prob
 
     @partial(jax.jit, static_argnums=0)
@@ -362,7 +365,7 @@ class ActorCriticPolicy(BasePolicy):
         observation = self.preprocess(observation)
         mean_actions, log_std = self._actor(observation, self.params)
         log_prob = self.action_dist_fn.log_prob(actions, mean_actions, log_std)            
-        entropy = self.action_dist_fn.entropy(log_std)  
+        entropy = self.action_dist_fn.entropy(mean_actions, log_std)  
         values = self._value(observation, self.params)
         return values, log_prob, entropy  
 

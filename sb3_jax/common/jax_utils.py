@@ -24,7 +24,7 @@ def jit_optimize(
     )
     if max_grad_norm is not None:
         grad = clip_gradient_norm(grad, max_grad_norm)
-    update, optimizer_state = optimizer.update(grad, optimizer_state)
+    update, optimizer_state = optimizer.update(grad, optimizer_state, params)
     params = optax.apply_updates(params, update)
     return optimizer_state, params, loss, aux
 
