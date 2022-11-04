@@ -11,7 +11,7 @@ from gym import spaces
 
 from sb3_jax.common.on_policy_algorithm import OnPolicyAlgorithm 
 from sb3_jax.common.policies import ActorCriticPolicy
-from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule, RolloutBufferSamples
+from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from sb3_jax.common.utils import get_schedule_fn
 from sb3_jax.common.jax_utils import jit_optimize, explained_variance
 

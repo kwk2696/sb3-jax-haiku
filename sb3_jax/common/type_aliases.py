@@ -30,6 +30,14 @@ class RolloutBufferSamples(NamedTuple):
     returns: jnp.ndarray
 
 
+class ReplayBufferSamples(NamedTuple):
+    observations: jnp.ndarray
+    actions: jnp.ndarray
+    next_observations: jnp.ndarray
+    dones: jnp.ndarray
+    rewards: jnp.ndarray
+
+
 class RolloutReturn(NamedTuple):
     episode_timesteps: int
     n_episodes: int

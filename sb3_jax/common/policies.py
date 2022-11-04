@@ -30,7 +30,7 @@ from sb3_jax.common.jax_layers import (
 )
 from sb3_jax.common.type_aliases import Schedule
 from sb3_jax.common.utils import is_vectorized_observation, obs_as_jnp, get_dummy_obs
-from sb3_jax.common.norm_layers import BaseNormLayer, RunningNormLayer
+from sb3_jax.common.norm_layers import BaseNormLayer
 
 
 class BaseModel(ABC):
@@ -98,9 +98,10 @@ class BaseModel(ABC):
         """Load model from path."""
     
     def preprocess(self, observation: jnp.ndarray, training: bool = False) -> jnp.ndarray:
+        observation =  preprocess_obs(observation, self.observation_space, self.normalize_images)
         if self.normalization_class is not None:
-            observation = self.normalization_layer(observation, training=training) 
-        return preprocess_obs(observation, self.observation_space, self.normalize_images) 
+            observation = self.normalization_layer(observation, training=training)  
+        return observation
 
     def obs_to_jnp(self, observation: Union[np.ndarray, Dict[str, np.ndarray]]) -> Tuple[jnp.ndarray, bool]:
         """Convert an input observation to a Jax array."""
@@ -296,6 +297,8 @@ class ActorCriticPolicy(BasePolicy):
                 optimizer_kwargs=self.optimizer_kwargs,
                 features_extractor_class=self.features_extractor_class,
                 features_extractor_kwargs=self.features_extractor_kwargs,
+                normalization_class=normalization_class,
+                normalization_kwargs=normalization_kwargs,
             )
         )
         return data
