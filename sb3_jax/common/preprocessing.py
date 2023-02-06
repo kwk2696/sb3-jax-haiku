@@ -63,16 +63,16 @@ def preprocess_obs(
     obs: jnp.array,
     observation_space: bool, #  spaces.Space,
     normalize_images: bool = True,
-) -> Union[jnp.array, Dict[str, jnp.array]]:
+) -> Union[np.array, Dict[str, np.array]]:
 
     if isinstance(observation_space, spaces.Box):
         if is_image_space(observation_space) and normalize_images:
             return obs.astype('float32') / 255.0
         return obs.astype('float32')
-    
+
     elif isinstance(observation_space, spaces.Discrete):
-        return nn.one_hot(obs.astype('int32'), num_classes=observation_space.n).astype('float32')
-    
+        obs = nn.one_hot(obs.astype('int32'), num_classes=observation_space.n).astype('float32')
+        return np.array(obs)
     else:
         raise NotImplementedError(f"Preprocessing not implemented for {observation_space}")
     

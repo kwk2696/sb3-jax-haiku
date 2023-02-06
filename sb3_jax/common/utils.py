@@ -10,6 +10,7 @@ import gym
 import numpy as np
 import jax
 import jax.numpy as jnp
+from jax import nn
 
 # Check if tensorboard is available for pytorch
 try:
@@ -44,6 +45,9 @@ def get_dummy_obs(observation_space: gym.spaces) -> np.ndarray:
 def get_dummy_act(action_space: gym.spaces) -> np.ndarray:
     if isinstance(action_space, gym.spaces.Box):
         action = action_space.sample()[None, ...].astype(np.float32)
+    elif isinstance(action_space, gym.spaces.Discrete):
+        action = action_space.sample()
+        action = nn.one_hot(np.array([action]).astype(np.int32), num_classes=action_space.n).astype('float32')
     else:
         raise NotImplementedError(f"Yet implemented for {action_space}")
     return action

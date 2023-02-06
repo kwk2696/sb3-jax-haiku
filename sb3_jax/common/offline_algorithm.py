@@ -10,7 +10,7 @@ from sb3_jax.common.base_class import BaseAlgorithm
 from sb3_jax.common.policies import BasePolicy, ActorCriticPolicy
 from sb3_jax.common.type_aliases import Schedule
 from sb3_jax.common.buffers import BaseBuffer
-from sb3_jax.common.type_aliases import GymEnv,MaybeCallback, Schedule 
+from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule
  
 class OfflineAlgorithm(BaseAlgorithm):
     """Base class for offline algorithms."""
@@ -70,6 +70,7 @@ class OfflineAlgorithm(BaseAlgorithm):
             self.observation_space,
             self.action_space,
             self.lr_schedule,
+            seed=self.seed,
             **self.policy_kwargs,
         )
 
@@ -106,11 +107,16 @@ class OfflineAlgorithm(BaseAlgorithm):
                 self.logger.record("time/time_elapsed", int(time.time() - self.start_time), exclude="tensorboard")
                 self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
                 self.logger.dump(step=self.num_timesteps)
+            
+            callback.update_locals(locals())
+            if callback.on_step() is False:
+                return False
 
         callback.on_training_end()
         
         return self
- 
+    
+    """
     def _save_jax_params(self) -> Dict[str, hk.Params]:
         params_dict = {}
         params_dict['policy'] = self.policy.params 
@@ -125,4 +131,5 @@ class OfflineAlgorithm(BaseAlgorithm):
     
     def _load_norm_layer(self, path: str) -> None:
         if self.policy.normalization_class is not None:
-            self.policy.normalization_layer = self.policy.normalization_layer.load(path) 
+            self.policy.normalization_layer = self.policy.normalization_layer.load(path)
+    """
