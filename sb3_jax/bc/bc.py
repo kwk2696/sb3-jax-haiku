@@ -67,6 +67,8 @@ class BC(OfflineAlgorithm):
             
             observations = self.policy.preprocess(replay_data.observations, training=True)
             actions = replay_data.actions
+            if isinstance(self.action_space, spaces.Discrete):
+                actions = actions.squeeze()
 
             self.policy.optimizer_state, self.policy.params, loss, info = jit_optimize(
                 self._loss,
@@ -108,7 +110,7 @@ class BC(OfflineAlgorithm):
         loss = neglogp + ent_loss
         
         info = {
-            'neglogp': log_prob,
+            'neglogp': neglogp,
             'entropy': entropy,
             'actor_loss': loss,
         }
@@ -138,3 +140,19 @@ class BC(OfflineAlgorithm):
             eval_log_path=eval_log_path,
             reset_num_timesteps=reset_num_timesteps,
         )
+
+    def _save_jax_params(self) -> Dict[str, hk.Params]:
+        params_dict = {}
+        params_dict['policy'] = self.policy.params 
+        return params_dict
+
+    def _load_jax_params(self, params: Dict[str, hk.Params]) -> None:
+        self.policy.params = params['policy']
+
+    def _save_norm_layer(self, path: str) -> None:
+        if self.policy.normalization_class is not None:
+            self.policy.normalization_layer.save(path)
+    
+    def _load_norm_layer(self, path: str) -> None:
+        if self.policy.normalization_class is not None:
+            self.policy.normalization_layer = self.policy.normalization_layer.load(path)

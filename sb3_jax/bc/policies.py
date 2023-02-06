@@ -81,6 +81,8 @@ class BCPolicy(BasePolicy):
         
         data.update(
             dict(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
                 net_arch=self.net_arch,
                 activation_fn=self.activation_fn, 
                 optimizer_class=self.optimizer_class,
@@ -98,7 +100,7 @@ class BCPolicy(BasePolicy):
             output_dim=-1, 
             net_arch=self.net_arch,
             activation_fn=self.activation_fn,
-            squash_output=True
+            squash_output=False,
         )
 
     def _build(self, lr_schedule: Schedule) -> None:
@@ -137,6 +139,18 @@ class BCPolicy(BasePolicy):
         observation = self.preprocess(observation)
         mean_actions, log_std = self._actor(observation, self.params)
         return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
+    
+    def evaluate_actions(self, observation: jnp.ndarray, actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        observation = self.preprocess(observation)
+        mean_actions, log_std = self._actor(observation, self.params)
+        log_prob = self.action_dist_fn.log_prob(actions, mean_actions, log_std)
+        entropy = self.action_dist_fn.entropy(mean_actions, log_std)
+        return log_prob, entropy
 
+    def save(self, path: str) -> None:
+        """Save model to path."""
+
+    def load(self, path: str):
+        """Load model from path."""
 
 MlpPolicy = BCPolicy

@@ -223,7 +223,7 @@ class ReplayBuffer(BaseBuffer):
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
     ):
-        super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, n_envs=n_envs)
 
         # Adjust buffer size
         self.buffer_size = max(buffer_size // n_envs, 1)

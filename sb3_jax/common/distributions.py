@@ -143,7 +143,7 @@ class CategoricalDistributionFn(DistributionFn):
 
     @partial(jax.jit, static_argnums=0)
     def sample(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: int) -> jnp.ndarray:
-        return jax.random.categorical(key, mean_actions)
+        return jax.random.categorical(key, log_std) # log_std is logprob in Categorical
     
     @partial(jax.jit, static_argnums=0)
     def mode(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
@@ -153,10 +153,10 @@ class CategoricalDistributionFn(DistributionFn):
     def log_prob(self, actions: jnp.ndarray, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
         """Equivalent to torch log_prob."""
         log_prob = log_std # for Categorical log_std is log_prob
-        actions = jnp.expand_dims(actions, axis=1)
+        actions = jnp.expand_dims(actions, axis=-1)
         actions, log_pmf = jnp.broadcast_arrays(actions, log_prob)
         actions = actions[...,:1]
-        return jnp.take_along_axis(log_pmf, actions, axis=1).squeeze()
+        return jnp.take_along_axis(log_pmf, actions, axis=-1).squeeze()
     
     @partial(jax.jit, static_argnums=0)
     def entropy(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
