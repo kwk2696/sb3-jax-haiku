@@ -1,4 +1,5 @@
-import warning
+import warnings
+import time
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
@@ -15,7 +16,7 @@ from sb3_jax.common.base_class import BaseAlgorithm
 from sb3_jax.common.buffers import ReplayBuffer
 from sb3_jax.common.policies import BasePolicy
 from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit
-from sb3_jax.common.utils import obs_as_jnp, safe_mean
+from sb3_jax.common.utils import obs_as_jnp, safe_mean, should_collect_more_steps
 
 class OffPolicyAlgorithm(BaseAlgorithm):
     def __init__(
@@ -29,7 +30,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         batch_size: int = 256,
         tau: float = 0.005,
         gamma: float = 0.99,
-        train_freq: Union[int, Tuple[int, str]] = (1, "step")
+        train_freq: Union[int, Tuple[int, str]] = (1, "step"),
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
         replay_buffer_class: Optional[ReplayBuffer] = None,
@@ -427,4 +428,3 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         callback.on_rollout_end()
 
         return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training)
-
