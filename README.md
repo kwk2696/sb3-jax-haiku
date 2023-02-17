@@ -10,6 +10,7 @@ This library is based on Stable Baselines 3 (https://github.com/DLR-RM/stable-ba
 |----------------|---------------------| ------------------ | ------------------ | ------------------- | ------------------ |
 | PPO            | :heavy_check_mark:  | :heavy_check_mark: | :heavy_check_mark: | :x:                 | :x:                |
 | BC			 | :x:                 | :heavy_check_mark: | :heavy_check_mark: | :x:                 | :x:                |
+| DT			 | :x:                 | :heavy_check_mark: | :x:                | :x:                 | :x:                |
 
 
 ### Install
