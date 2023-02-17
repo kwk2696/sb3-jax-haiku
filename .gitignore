@@ -3,7 +3,9 @@ __pycache__/
 results/
 video/
 datasets/
+data/
 model/
 
+tags
 *.swp
 *.sh

@@ -57,6 +57,9 @@ def get_dummy_done() -> np.ndarray:
     done = np.zeros((1,))[None, ...].astype(np.float32)
     return done
 
+def get_dummy_timestep() -> np.ndarray:
+    timestep = np.zeros((1,))[None, ...].astype(np.int32)
+    return timestep
 
 def get_dummy_transition(
     observation_space: gym.spaces, 
@@ -68,7 +71,17 @@ def get_dummy_transition(
     done = get_dummy_done()
     return observation, action, next_observation, done
 
-
+def get_dummy_decision_transformer(
+    observation_space: gym.spaces,
+    action_space: gym.spaces,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    observation = get_dummy_obs(observation_space)[None, ...] # for expanding squence
+    action = get_dummy_act(action_space)[None, ...]
+    reward = get_dummy_done()[None, ...]
+    return_to_go = get_dummy_done()[None, ...]
+    timestep = get_dummy_timestep()
+    return observation, action, reward, return_to_go, timestep 
+    
 def set_random_seed(seed: int) -> None:
     """ Seed the different random generators."""
     # Seed python RNG

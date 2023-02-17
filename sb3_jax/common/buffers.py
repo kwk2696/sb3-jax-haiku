@@ -1,17 +1,20 @@
 import warnings
 import pickle
 from abc import ABC, abstractmethod
+from functools import partial
 from typing import Any, Dict, Generator, List, Optional, Union
 
+import jax
 import numpy as np
 import jax.numpy as jnp
 from gym import spaces
 
 from stable_baselines3.common.vec_env import VecNormalize
-from sb3_jax.common.preprocessing import get_action_dim, get_obs_shape
+from sb3_jax.common.preprocessing import get_action_dim, get_obs_shape, get_flattened_obs_dim
 from sb3_jax.common.type_aliases import (
     RolloutBufferSamples,
     ReplayBufferSamples,
+    TrajectoryBufferSamples,
 )
 try:
     # Check memory used by replay buffer when possible
@@ -34,7 +37,8 @@ class BaseBuffer(ABC):
         self.action_space = action_space
         self.obs_shape = get_obs_shape(observation_space)
 
-        self.action_dim = get_action_dim(action_space)
+        self.obs_dim = get_flattened_obs_dim(observation_space)
+        self.act_dim = get_action_dim(action_space)
         self.pos = 0
         self.full = False
         self.n_envs = n_envs
@@ -116,7 +120,7 @@ class RolloutBuffer(BaseBuffer):
     def reset(self) -> None:
 
         self.observations = np.zeros((self.buffer_size, self.n_envs) + self.obs_shape, dtype=np.float32)
-        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
+        self.actions = np.zeros((self.buffer_size, self.n_envs, self.act_dim), dtype=np.float32)
         self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.episode_starts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
@@ -242,7 +246,7 @@ class ReplayBuffer(BaseBuffer):
         else:
             self.next_observations = np.zeros((self.buffer_size, self.n_envs) + self.obs_shape, dtype=observation_space.dtype)
 
-        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=action_space.dtype)
+        self.actions = np.zeros((self.buffer_size, self.n_envs, self.act_dim), dtype=action_space.dtype)
 
         self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
@@ -280,7 +284,7 @@ class ReplayBuffer(BaseBuffer):
 
         # Same, for actions
         if isinstance(self.action_space, spaces.Discrete):
-            action = action.reshape((self.n_envs, self.action_dim))
+            action = action.reshape((self.n_envs, self.act_dim))
 
         # Copy to avoid modification by reference
         self.observations[self.pos] = np.array(obs).copy()
@@ -343,7 +347,7 @@ class OfflineBuffer(BaseBuffer):
         super(OfflineBuffer, self).__init__(buffer_size, observation_space, action_space)
 
         self.observations = np.zeros((self.buffer_size, self.n_envs) + self.obs_shape, dtype=observation_space.dtype)
-        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=action_space.dtype)
+        self.actions = np.zeros((self.buffer_size, self.n_envs, self.act_dim), dtype=action_space.dtype)
         self.next_observations = np.zeros((self.buffer_size, self.n_envs) + self.obs_shape, dtype=observation_space.dtype)
         self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
@@ -363,7 +367,7 @@ class OfflineBuffer(BaseBuffer):
             next_obs = obs.reshape((self.n_envs,) + self.obs_shape)
 
         if isinstance(self.action_space, spaces.Discrete):
-            action = action.reshape((self.n_envs, self.action_dim))
+            action = action.reshape((self.n_envs, self.act_dim))
 
         self.observations[self.pos] = np.array(obs).copy()
         self.actions[self.pos] = np.array(action).copy()
@@ -397,3 +401,119 @@ class OfflineBuffer(BaseBuffer):
     def load(self, path: str) -> Any:
         with open(path, "rb") as f:
             return pickle.load(f)
+
+
+class TrajectoryBuffer(BaseBuffer):
+    """Buffer used in DT."""
+
+    def __init__(
+        self,
+        trajectories: Dict[str, List],
+        max_length: int,
+        max_ep_length: int,
+        scale: float, # normalization for rewards/returns
+        buffer_size: int = None,
+        observation_space: spaces.Space = None,
+        action_space: spaces.Space = None,
+        n_envs: int = 1,
+    ):
+        super(TrajectoryBuffer, self).__init__(buffer_size, observation_space, action_space) 
+        self.trajectories = trajectories
+        self.max_length = max_length
+        self.max_ep_length = max_ep_length
+        self.scale = scale
+        self.setup()
+
+    def setup(self) -> None:
+        observations, traj_lengths, returns = [], [], []
+        for path in self.trajectories:
+            observations.append(path['observations'])
+            traj_lengths.append(len(path['observations']))
+            returns.append(path['rewards'].sum())
+        traj_lengths, returns = np.array(traj_lengths), np.array(returns)
+
+        observations = np.concatenate(observations, axis=0)
+        self.obs_mean, self.obs_std = np.mean(observations, axis=0), np.std(observations, axis=0) + 1e-6
+        num_timesteps = sum(traj_lengths)
+        
+        print('=' * 50)
+        print(f'{len(traj_lengths)} trajectories, {num_timesteps} timesteps found')
+        print(f'Average return: {np.mean(returns):.2f}, std: {np.std(returns):.2f}')
+        print(f'Max return: {np.max(returns):.2f}, std: {np.min(returns):.2f}')
+        print('=' * 50)
+
+        # only train on top pct_traj trajectories
+        pct_traj = 1.
+        num_timesteps = max(int(pct_traj*num_timesteps), 1)
+        sorted_inds = np.argsort(returns) # lowest to highest
+        num_trajectories = 1 
+        timesteps = traj_lengths[sorted_inds[-1]]
+        ind = len(self.trajectories) - 2
+        while ind >= 0 and timesteps + traj_lengths[sorted_inds[ind]] <= num_timesteps:
+            timesteps += traj_lengths[sorted_inds[ind]]
+            num_trajectories += 1 
+            ind -= 1 
+        sorted_inds = sorted_inds[-num_trajectories:]
+
+        # used to reweight sampling so we sample according to timesteps instead of trajectories
+        self.p_sample = traj_lengths[sorted_inds] / sum(traj_lengths[sorted_inds])
+        self.sorted_inds = sorted_inds
+        self.num_trajectories = num_trajectories
+
+    def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+        batch_inds = np.random.choice(
+            np.arange(self.num_trajectories),
+            size=batch_size,
+            replace=True,
+            p=self.p_sample
+        )
+        return self._get_samples(batch_inds, env=env)
+    
+    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
+        
+        for i in range(len(batch_inds)):
+            traj = self.trajectories[int(self.sorted_inds[batch_inds[i]])]
+            si = np.random.randint(0, traj['rewards'].shape[0] - 1)
+            
+            # get sequences from dataset
+            observations.append(traj['observations'][si:si + self.max_length].reshape(1, -1, self.obs_dim))
+            actions.append(traj['actions'][si:si + self.max_length].reshape(1, -1, self.act_dim))
+            rewards.append(traj['rewards'][si:si + self.max_length].reshape(1, -1, 1))
+            if 'terminals' in traj: dones.append(traj['terminals'][si:si + self.max_length].reshape(1, -1))
+            else: dones.append(traj['dones'][si:si + self.max_length].reshape(1, -1))
+            timesteps.append(np.arange(si, si + observations[-1].shape[1]).reshape(1, -1))
+            timesteps[-1][timesteps[-1] >= self.max_ep_length] = self.max_ep_length - 1 # padding cutoff
+            returns_to_go.append(self.discount_cumsum(traj['rewards'][si:], gamma=1.)[:observations[-1].shape[1] + 1].reshape(1, -1, 1))
+            if returns_to_go[-1].shape[1] <= observations[-1].shape[1]:
+                returns_to_go[-1] = np.concatenate([returns_to_go[-1], np.zeros((1, 1, 1))], axis=1)
+            
+            # padding and state + reward normalization
+            tlen = observations[-1].shape[1]
+            observations[-1] = np.concatenate([np.zeros((1, self.max_length - tlen, self.obs_dim)), observations[-1]], axis=1)
+            observations[-1] = (observations[-1] - self.obs_mean) / self.obs_std
+            actions[-1] = np.concatenate([np.ones((1, self.max_length - tlen, self.act_dim)) * -10, actions[-1]], axis=1)
+            rewards[-1] = np.concatenate([np.zeros((1, self.max_length - tlen, 1)), rewards[-1]], axis=1)
+            dones[-1] = np.concatenate([np.ones((1, self.max_length - tlen)) * 2, dones[-1]], axis=1)
+            returns_to_go[-1] = np.concatenate([np.zeros((1, self.max_length - tlen, 1)), returns_to_go[-1]], axis=1) / self.scale
+            timesteps[-1] = np.concatenate([np.zeros((1, self.max_length - tlen)), timesteps[-1]], axis=1)
+            masks.append(np.concatenate([np.zeros((1, self.max_length - tlen)), np.ones((1, tlen))], axis=1))
+        
+        data = (
+            np.concatenate(observations, axis=0).astype(np.float32),
+            np.concatenate(actions, axis=0).astype(np.float32),
+            np.concatenate(rewards, axis=0).astype(np.float32),
+            np.concatenate(dones, axis=0).astype(np.int32),
+            np.concatenate(returns_to_go, axis=0)[:,:-1].astype(np.float32),
+            np.concatenate(timesteps, axis=0).astype(np.int32),
+            np.concatenate(masks, axis=0).astype(np.float32),
+        )
+        return TrajectoryBufferSamples(*tuple(map(self.to_jnp, data)))
+
+    def discount_cumsum(self, x: np.ndarray, gamma: float):
+        discount_cumsum = np.zeros_like(x)
+        discount_cumsum[-1] = x[-1]
+        for t in reversed(range(x.shape[0]-1)):
+            discount_cumsum[t] = x[t] + gamma * discount_cumsum[t+1]
+        return discount_cumsum
+
