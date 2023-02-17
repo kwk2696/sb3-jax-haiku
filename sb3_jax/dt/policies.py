@@ -114,6 +114,7 @@ class DTPolicy(BasePolicy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         lr_schedule: Schedule,
+        max_grad_norm: float = .25,
         # gpt configs
         max_length: int = None,
         max_ep_length: int = None,
@@ -148,6 +149,8 @@ class DTPolicy(BasePolicy):
             squash_output=squash_output,
         )
         
+        self.max_grad_norm = max_grad_norm
+
         self.max_length = max_length
         self.max_ep_length = max_ep_length
         self.hidden_size = hidden_size
@@ -191,9 +194,13 @@ class DTPolicy(BasePolicy):
             features_extractor = self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs)
             action = self._build_actor()
             return action(observations, actions, rewards, returns_to_go, timesteps, attention_mask, deterministic)
-
-        params, self.actor = hk.without_state((hk.transform_with_state(fn_actor)))
-        self.params = params(
+        
+        # transform_with_state function returns a pair of pure functions
+        # explicityly collecting and injecting parameter and state values
+        # 1. init: ``params, state = init(rng, *a, **k)``
+        # 2. apply: ``out, state = apply(params, rng, *a, **k)``
+        params, self.actor = hk.transform_with_state(fn_actor)
+        self.params, self.state = params(
             next(self.rng), 
             *get_dummy_decision_transformer(self.observation_space, self.action_space), 
             attention_mask=None,
@@ -225,9 +232,10 @@ class DTPolicy(BasePolicy):
         timesteps: jnp.ndarray,
         attention_mask: jnp.ndarray,
         params: hk.Params,
+        state: hk.Params,
         deterministic: bool = False,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        return self.actor(params, next(self.rng), observations, actions, rewards, returns_to_go, timesteps, attention_mask, deterministic)
+    ) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]:
+        return self.actor(params, state, next(self.rng), observations, actions, rewards, returns_to_go, timesteps, attention_mask, deterministic)
     
     def _predict(
         self, 
@@ -240,7 +248,7 @@ class DTPolicy(BasePolicy):
         deterministic: bool = False,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         observations = self.preprocess(observations)
-        return self._actor(observations, actions, rewards, returns_to_go, timesteps, attention_mask, self.params, deterministic)
+        return self._actor(observations, actions, rewards, returns_to_go, timesteps, attention_mask, self.params, self.state, deterministic)
     
     def save(self, path: str) -> None:
         """Save model to path."""

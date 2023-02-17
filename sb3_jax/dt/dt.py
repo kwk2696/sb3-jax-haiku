@@ -11,7 +11,7 @@ import haiku as hk
 from sb3_jax.common.offline_algorithm import OfflineAlgorithm
 from sb3_jax.common.buffers import BaseBuffer, TrajectoryBuffer
 from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from sb3_jax.common.jax_utils import jit_optimize
+from sb3_jax.common.jax_utils import jit_optimize_with_state
 from sb3_jax.dt.policies import DTPolicy
 
 
@@ -76,25 +76,23 @@ class DT(OfflineAlgorithm):
             returns_to_go = replay_data.returns_to_go
             timesteps = replay_data.timesteps
             masks = replay_data.masks
-            # # # # # # # # # # # # # # # # # # # # # # # # # #
+            # # # # # # # # # # # # # # # # # # # # # # # # # # 
             
-            observation_preds, action_preds, reward_preds = self.policy._actor(
-                observations, actions, rewards, returns_to_go, timesteps, masks, deterministic=False, params=self.policy.params
-            )
-            action_dim = action_preds.shape[2] 
-            action_preds = action_preds.reshape(-1, action_dim)[masks.reshape(-1) > 0]
-            action_targets = actions.reshape(-1, action_dim)[masks.reshape(-1) > 0]
-           
-            self.policy.optimizer_state, self.policy.params, loss, info = jit_optimize(
+            self.policy.optimizer_state, self.policy.params, self.policy.state, loss, info = jit_optimize_with_state(
                 self._loss,
                 self.policy.optimizer,
                 self.policy.optimizer_state,
                 self.policy.params,
-                None,
-                action_preds=action_preds,
-                action_targets=action_targets,
+                self.policy.state,
+                self.policy.max_grad_norm,
+                observations=observations,
+                actions=actions,
+                rewards=rewards, 
+                returns_to_go=returns_to_go,
+                timesteps=timesteps,
+                masks=masks,
+                deterministic=False,
             )
-
             actor_losses.append(np.array(info["actor_loss"]))
         
         self._n_updates += gradient_steps
@@ -106,15 +104,38 @@ class DT(OfflineAlgorithm):
     def _loss(
         self,
         params: hk.Params,
-        action_preds: jnp.ndarray,
-        action_targets: jnp.ndarray,
-    ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
-
+        state: hk.Params,
+        observations: jnp.ndarray,
+        actions: jnp.ndarray,
+        rewards: jnp.ndarray,
+        returns_to_go: jnp.ndarray,
+        timesteps: jnp.ndarray, 
+        masks: jnp.ndarray,
+        deterministic: jnp.ndarray,
+    ) -> Tuple[jnp.ndarray, Tuple[Dict[str, jnp.ndarray]]]:
+        
+        (observation_preds, action_preds, reward_preds), new_state = self.policy._actor(
+            observations, actions, rewards, returns_to_go, timesteps, masks, 
+            deterministic=False, params=params, state=state
+        )
+        action_dim = action_preds.shape[2] 
+        #action_preds = action_preds.reshape(-1, action_dim)[masks.reshape(-1) > 0]
+        #action_targets = actions.reshape(-1, action_dim)[masks.reshape(-1) > 0]
+        
+        # preprocess masks 
+        masks = masks.reshape(-1)
+        masks = jnp.repeat(masks, action_dim).reshape(-1, action_dim)
+        action_preds = action_preds.reshape(-1, action_dim)
+        action_preds = jnp.where(masks, action_preds, 0)
+        action_targets = actions.reshape(-1, action_dim)
+        action_targets = jnp.where(masks, action_targets, 0)
+            
+        # Define loss
         loss = jnp.mean(jnp.square(action_preds - action_targets)) 
         info = {
             'actor_loss': loss
         }
-        return loss, info
+        return loss, (new_state, info)
 
     def learn(
         self,

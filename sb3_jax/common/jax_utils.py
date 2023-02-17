@@ -29,6 +29,30 @@ def jit_optimize(
     return optimizer_state, params, loss, aux
 
 
+@partial(jax.jit, static_argnums=(0, 1, 5))
+def jit_optimize_with_state(
+    loss_function: Callable[..., Any],
+    optimizer: optax.GradientTransformation,
+    optimizer_state: optax.OptState,
+    params: hk.Params,
+    state: hk.Params, 
+    max_grad_norm: float, 
+    *args,
+    **kwargs,
+) -> Tuple[Any, hk.Params, jnp.ndarray, Any]:
+    (loss, (new_state, aux)), grad = jax.value_and_grad(loss_function, has_aux=True)(
+        params,
+        state,
+        *args, 
+        **kwargs,
+    )
+    if max_grad_norm is not None:
+        grad = clip_gradient_norm(grad, max_grad_norm)
+    update, optimizer_state = optimizer.update(grad, optimizer_state, params)
+    params = optax.apply_updates(params, update)
+    return optimizer_state, params, new_state, loss, aux
+
+
 @jax.jit
 def clip_gradient(
     grad: Dict,

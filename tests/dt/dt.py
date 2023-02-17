@@ -47,8 +47,9 @@ dt = DT(
         n_inner=4*128,
         activation_function='relu',
         n_positions=1024,
-        resid_pdrop=0.1,
-        attn_pdrop=0.1,
+        resid_pdrop=.1,
+        attn_pdrop=.1,
+        max_grad_norm=.25,
         optimizer_kwargs=dict(
             weight_decay=1e-4
         )
