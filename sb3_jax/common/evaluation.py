@@ -15,6 +15,7 @@ def evaluate_policy(
     model: "base_class.BaseAlgorithm",
     env: Union[gym.Env, VecEnv],
     n_eval_episodes: int = 100,
+    max_ep_length: int = None,
     deterministic: bool = True,
     render: bool = False,
     callback: Optional[Callable[[Dict[str, Any], Dict[str, Any]], None]] = None,
@@ -70,7 +71,7 @@ def evaluate_policy(
                 if callback is not None:
                     callback(locals(), globals())
 
-                if dones[i]:
+                if dones[i] or (max_ep_length is not None and current_lengths[i] == max_ep_length):
                     if is_monitor_wrapped:
                         # Atari wrapper can send a "done" signal when
                         # the agent loses a life, but it does not correspond
@@ -106,7 +107,7 @@ def evaluate_traj_policy(
     model: "base_class.BaseAlgorithm", 
     env: gym.Env,
     n_eval_episodes: int = 100,
-    max_ep_length: int = 1000,
+    max_ep_length: int = None,
     deterministic: bool = True, 
     obs_mean: float = 0.0,
     obs_std: float = 0.0,
@@ -161,7 +162,7 @@ def evaluate_traj_policy(
             current_reward += reward
             current_length += 1
             
-            if done or current_length == max_ep_length:
+            if done or (max_ep_length is not None and current_length == max_ep_length):
                 episode_rewards.append(current_reward)
                 episode_lengths.append(current_length)
                 break

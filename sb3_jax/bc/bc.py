@@ -25,13 +25,16 @@ class BC(OfflineAlgorithm):
         gamma: float = 0.99,
         gradient_steps: int = 1,
         ent_coef: float = 0.0,
+        loss_type: str = 'mse', # loss type: mse/neglogp 
         create_eval_env: bool = False,
         tensorboard_log: Optional[str] = None,
+        wandb_log: Optional[str] = None,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
         seed: Optional[int] = None,
         _init_setup_model: bool = True,
     ): 
+        assert loss_type in ['mse', 'neglogp'], "Loss type should be one of mse and neglogp" 
         super(BC, self).__init__(
             policy,
             env,
@@ -41,14 +44,17 @@ class BC(OfflineAlgorithm):
             gamma=gamma,
             gradient_steps=gradient_steps,
             tensorboard_log=tensorboard_log,
+            wandb_log=wandb_log,
             policy_kwargs=policy_kwargs,
             verbose=verbose,
             create_eval_env=create_eval_env,
             seed=seed,
+            _init_setup_model=False,
             supported_action_spaces=(gym.spaces.Discrete, gym.spaces.Box),
             support_multi_env=False,
         )
-        
+         
+        self.loss_type = loss_type
         self.ent_coef = ent_coef
         if _init_setup_model:
             self._setup_model()
@@ -67,7 +73,7 @@ class BC(OfflineAlgorithm):
             
             observations = self.policy.preprocess(replay_data.observations, training=True)
             actions = replay_data.actions
-            if isinstance(self.action_space, spaces.Discrete):
+            if isinstance(self.action_space, gym.spaces.Discrete):
                 actions = actions.squeeze()
 
             self.policy.optimizer_state, self.policy.params, loss, info = jit_optimize(
@@ -90,6 +96,15 @@ class BC(OfflineAlgorithm):
         self.logger.record("train/actor_loss", np.mean(actor_losses))
         self.logger.record("train/entropy", np.mean(entropys))
         self.logger.record("train/neglogp", np.mean(neglogps))
+        
+        # wandb log
+        if self.wandb_log is not None:
+            wandb.log({
+                "train/n_updates": self._n_updates,
+                "train/actor_loss": np.mean(actor_losses),
+                "train/entropy": np.mean(entropys),
+                "train/neglogp": np.mean(neglogps),
+            })
 
     @partial(jax.jit, static_argnums=0)
     def _loss(
@@ -99,16 +114,21 @@ class BC(OfflineAlgorithm):
         actions: jnp.ndarray,
     ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
 
-        mean_actions, log_std = self.policy._actor(observations, params)
-        log_prob = self.policy.action_dist_fn.log_prob(actions, mean_actions, log_std)
-        log_prob = jnp.mean(log_prob)
-        entropy = self.policy.action_dist_fn.entropy(mean_actions, log_std)
-        entropy = jnp.mean(entropy)
         
-        ent_loss = -self.ent_coef * entropy
-        neglogp = -log_prob
-        loss = neglogp + ent_loss
-        
+        if self.loss_type == 'neglogp':
+            mean_actions, log_std = self.policy._actor(observations, params)
+            log_prob = self.policy.action_dist_fn.log_prob(actions, mean_actions, log_std)
+            log_prob = jnp.mean(log_prob)
+            entropy = self.policy.action_dist_fn.entropy(mean_actions, log_std)
+            entropy = jnp.mean(entropy)
+            ent_loss = -self.ent_coef * entropy
+            neglogp = -log_prob
+            loss = neglogp + ent_loss
+        elif self.loss_type == 'mse':
+            mean_actions = self.policy._actor(observations, params)
+            neglogp, entropy = 0., 0.
+            loss = jnp.mean(jnp.square(mean_actions - actions)) 
+
         info = {
             'neglogp': neglogp,
             'entropy': entropy,
@@ -128,6 +148,17 @@ class BC(OfflineAlgorithm):
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
     ) -> "PPO":
+        
+        # wandb configs
+        self.wandb_config = dict( 
+            learning_rate=self.learning_rate,
+            batch_size=self.batch_size,
+            gamma=self.gamma,
+            gradient_steps=self.gradient_steps,
+            ent_coef=self.ent_coef,
+            loss_type=self.loss_type,
+        )
+        self.wandb_config.update(self.policy._get_constructor_parameters())
 
         return super(BC, self).learn(
             total_timesteps=total_timesteps,

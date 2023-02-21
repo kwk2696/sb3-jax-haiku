@@ -37,7 +37,7 @@ print(f"Before Learning: {mean_reward}")
 ppo.learn(total_timesteps=200000, log_interval=10)
 mean_reward, _ = evaluate_policy(ppo, env_eval, n_eval_episodes=100)
 print(f"After Learning: {mean_reward}")
-ppo.save(path='./model')
+ppo.save(path='../model/ppo')
 #print(ppo.policy.params)
 
 
@@ -61,7 +61,7 @@ _ppo = PPO(
     )
 )
 print("Model Loading...")
-_ppo = _ppo.load(path='./model')
+_ppo = _ppo.load(path='../model/ppo')
 #print(_ppo.policy.params)
 mean_reward, _ = evaluate_policy(_ppo, env_eval, n_eval_episodes=100)
 print(f"Load Learning: {mean_reward}")

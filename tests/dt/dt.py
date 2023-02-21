@@ -87,7 +87,7 @@ mean_reward, _ = evaluate_traj_policy(
 )
 print(f"After Learning: {mean_reward}")
 
-dt.save(path='./model')
+dt.save(path='../model/dt')
 
 # Loading Model
 _dt = DT(
@@ -115,7 +115,7 @@ _dt = DT(
     ),
 )
 print("Model Loading...")
-_dt = _dt.load(path='./model')
+_dt = _dt.load(path='../model/dt')
 mean_reward, _ = evaluate_traj_policy(
     model=dt, 
     env=env, 

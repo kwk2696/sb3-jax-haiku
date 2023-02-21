@@ -3,11 +3,10 @@ import pickle
 
 import gym
 from sb3_jax.common.buffers import OfflineBuffer
-from moirl_jax.utils.utils import load_trajs
 
 def collect(args):
     # Load Trajectories
-    with open("datasets/dataset.pkl", "rb") as f:
+    with open("../data/dataset.pkl", "rb") as f:
         expert_traj = pickle.load(f) 
     # Check the buffer size
     buffer_size = 0 
@@ -39,7 +38,7 @@ def collect(args):
      
     print(buff.observations[0][0])
     # Save the OfflineBuffer
-    buff.save(path='datasets/offline_buffer.pkl')
+    buff.save(path='../data/offline_buffer.pkl')
     
     # Load Buffer
     _buff = OfflineBuffer(
@@ -47,7 +46,7 @@ def collect(args):
         observation_space=env.observation_space,
         action_space=env.action_space,
     )
-    _buff = _buff.load(path='datasets/offline_buffer.pkl')
+    _buff = _buff.load(path='../data/offline_buffer.pkl')
 
     print(_buff.observations[0][0])
 

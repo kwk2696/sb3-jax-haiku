@@ -41,6 +41,7 @@ class BCPolicy(BasePolicy):
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu,
         log_std_init: float = 0.0,
         squash_output: bool = False,
+        use_dist: bool = False, # whether to use action from distribution
         features_extractor_class: Type[BaseFeaturesExtractor] = FlattenExtractor,
         features_extractor_kwargs: Optional[Dict[str, Any]] = None,
         normalize_images: bool = True,
@@ -64,20 +65,19 @@ class BCPolicy(BasePolicy):
          
         if net_arch is None:
             net_arch = [64, 64]
-        actor_arch = _ = get_actor_critic_arch
-
+       
+        self.use_dist = use_dist
         self.net_arch = net_arch
         self.activation_fn = activation_fn 
 
         self.log_std_init = log_std_init
         self.dist_kwargs = dict()
         
-        # Action distribution class
-        self.action_dist_class, self.action_dist_fn = make_proba_distribution(action_space, use_sde=False)
+        self.action_dist_class, self.action_dist_fn = make_proba_distribution(action_space, use_sde=False) 
         self._build(lr_schedule)
     
     def _get_constructor_parameters(self) -> Dict[str, Any]:
-        data = super._get_constructor_parameters()
+        data = super()._get_constructor_parameters()
         
         data.update(
             dict(
@@ -89,24 +89,24 @@ class BCPolicy(BasePolicy):
                 optimizer_kwargs=self.optimizer_kwargs,
                 features_extractor_class=self.features_extractor_class,
                 features_extractor_kwargs=self.features_extractor_kwargs,
-                normalization_class=normalization_class,
-                normalization_kwargs=normalization_kwargs,
+                normalization_class=self.normalization_class,
+                normalization_kwargs=self.normalization_kwargs,
             )
         )
         return data
 
-    def _build_actor(self) -> hk.Module:
+    def _build_actor(self, net_arch: List[int], squash_output: bool = False) -> hk.Module:
         return create_mlp(
             output_dim=-1, 
-            net_arch=self.net_arch,
+            net_arch=net_arch,
             activation_fn=self.activation_fn,
-            squash_output=False,
+            squash_output=squash_output,
         )
 
     def _build(self, lr_schedule: Schedule) -> None:
         if self.normalization_class is not None:
             self.normalization_layer = self.normalization_class(self.observation_space.shape, **self.normalization_kwargs)
-
+        
         if isinstance(self.action_dist_fn, DiagGaussianDistributionFn):
             action_dim = get_action_dim(self.action_space)
             self.dist_kwargs.update(dict(log_std_init=self.log_std_init))
@@ -114,13 +114,20 @@ class BCPolicy(BasePolicy):
             action_dim = self.action_space.n
         else:
             raise NotImplementedError(f"Unsupported distribution '{self.action_dist_fn}'.")
-
+            
         def fn_actor(observation: jnp.ndarray): 
             features_extractor = self.features_extractor_class(self.observation_space, **self.features_extractor_kwargs)
-            action_net = self._build_actor()
-            action = hk.Sequential(
-                [features_extractor, action_net, self.action_dist_class(action_dim, **self.dist_kwargs)]
-            )
+            
+            if self.use_dist:
+                action_net = self._build_actor(self.net_arch, squash_output=False)
+                action = hk.Sequential(
+                    [features_extractor, action_net, self.action_dist_class(action_dim, **self.dist_kwargs)]
+                )
+            else:
+                action_net = self._build_actor(self.net_arch + [action_dim], squash_output=True)
+                action = hk.Sequential(
+                    [features_extractor, action_net]
+                )
             return action(observation)
 
         params, self.actor = hk.without_apply_rng(hk.transform(fn_actor))
@@ -137,8 +144,11 @@ class BCPolicy(BasePolicy):
 
     def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
         observation = self.preprocess(observation)
-        mean_actions, log_std = self._actor(observation, self.params)
-        return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
+        if self.use_dist:
+            mean_actions, log_std = self._actor(observation, self.params)
+            return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
+        else:
+            return self._actor(observation, self.params)
     
     def evaluate_actions(self, observation: jnp.ndarray, actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         observation = self.preprocess(observation)

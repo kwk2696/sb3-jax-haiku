@@ -351,7 +351,7 @@ class OfflineBuffer(BaseBuffer):
         self.next_observations = np.zeros((self.buffer_size, self.n_envs) + self.obs_shape, dtype=observation_space.dtype)
         self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-
+    
     def add(
         self,
         obs: np.ndarray,
@@ -359,7 +359,7 @@ class OfflineBuffer(BaseBuffer):
         action: np.ndarray,
         reward: np.ndarray,
         done: np.ndarray,
-        infos: List[Dict[str, Any]], 
+        infos: Optional[List[Dict[str, Any]]] = None, 
     ) -> None:
 
         if isinstance(self.observation_space, spaces.Discrete):
@@ -378,7 +378,20 @@ class OfflineBuffer(BaseBuffer):
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
-
+    
+    def add_traj(
+        self,
+        traj: Dict[str, np.ndarray]
+    ):
+        for t in range(traj['observations'].shape[0]):
+            self.add(
+                traj['observations'][t], 
+                traj['next_observations'][t],
+                traj['actions'][t],
+                traj['rewards'][t],
+                traj['terminals'][t],
+            )
+ 
     def sample(self, batch_size: int, env:Optional[VecNormalize] = None) -> ReplayBufferSamples:
         return super().sample(batch_size, env=env)
 
@@ -408,7 +421,7 @@ class TrajectoryBuffer(BaseBuffer):
 
     def __init__(
         self,
-        trajectories: Dict[str, List],
+        trajectories: Dict[str, np.ndarray],
         max_length: int,
         max_ep_length: int,
         scale: float, # normalization for rewards/returns
@@ -459,6 +472,7 @@ class TrajectoryBuffer(BaseBuffer):
         self.p_sample = traj_lengths[sorted_inds] / sum(traj_lengths[sorted_inds])
         self.sorted_inds = sorted_inds
         self.num_trajectories = num_trajectories
+        self.num_timesteps = num_timesteps
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
         batch_inds = np.random.choice(
