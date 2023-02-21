@@ -151,7 +151,8 @@ def configure_logger(
 ) -> Logger:
     """Configure the logger's outputs."""
     save_path, format_strings = None, ["stdout"]
-
+    
+    # Tensorboard log
     if tensorboard_log is not None and SummaryWriter is None:
         raise ImportError("Trying to log data to tensorboard but tensorboard is not installed.")
 

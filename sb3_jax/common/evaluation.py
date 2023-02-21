@@ -106,6 +106,7 @@ def evaluate_traj_policy(
     model: "base_class.BaseAlgorithm", 
     env: gym.Env,
     n_eval_episodes: int = 100,
+    max_ep_length: int = 1000,
     deterministic: bool = True, 
     obs_mean: float = 0.0,
     obs_std: float = 0.0,
@@ -120,11 +121,11 @@ def evaluate_traj_policy(
     episode_lengths = []
     
     for epi in range(n_eval_episodes):
-        observations = env.reset()
+        observation = env.reset()
         
         # we keep all the histories
         # note that the latest action and reward will be "padding"
-        observations = np.array(observations, dtype=np.float32).reshape(1, obs_dim)
+        observations = np.array(observation, dtype=np.float32).reshape(1, obs_dim)
         actions = np.zeros((0, act_dim), dtype=np.float32)
         rewards = np.zeros(0, dtype=np.float32)
         ep_return = target_return
@@ -149,8 +150,10 @@ def evaluate_traj_policy(
             actions[-1] = action
             
             observation, reward, done, _ = env.step(action)
-            rewards[-1] = reward 
 
+            cur_observation = np.array(observation, dtype=np.float32).reshape(1, obs_dim)
+            observations = np.concatenate([observations, cur_observation], axis=0)
+            rewards[-1] = reward 
             pred_return = target_return[0,-1] - (reward / scale)
             target_return = np.concatenate([target_return, pred_return.reshape(1, 1)], axis=1)
             timesteps = np.concatenate([timesteps, np.ones((1,1), dtype=np.int32) * (current_length+1)], axis=1)
@@ -158,7 +161,7 @@ def evaluate_traj_policy(
             current_reward += reward
             current_length += 1
             
-            if current_length == 999:
+            if done or current_length == max_ep_length:
                 episode_rewards.append(current_reward)
                 episode_lengths.append(current_length)
                 break

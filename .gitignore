@@ -5,6 +5,7 @@ video/
 datasets/
 data/
 model/
+wandb/
 
 tags
 *.swp

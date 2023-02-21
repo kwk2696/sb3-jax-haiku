@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
+import wandb
 import gym
 import numpy as np
 
@@ -57,6 +58,7 @@ class BaseAlgorithm(ABC):
         learning_rate: Union[float, Schedule],
         policy_kwargs: Optional[Dict[str, Any]] = None,
         tensorboard_log: Optional[str] = None,
+        wandb_log: Optional[str] = None,
         verbose: int = 0,
         support_multi_env: bool = False,
         create_eval_env: bool = False,
@@ -92,6 +94,7 @@ class BaseAlgorithm(ABC):
         self.policy = None
         self.learning_rate = learning_rate
         self.tensorboard_log = tensorboard_log
+        self.wandb_log = wandb_log
         self.lr_schedule = None  # type: Optional[Schedule]
         self._last_obs = None  # type: Optional[Union[np.ndarray, Dict[str, np.ndarray]]]
         self._last_episode_starts = None  # type: Optional[np.ndarray]
@@ -337,6 +340,11 @@ class BaseAlgorithm(ABC):
         # Configure logger's outputs if no logger was passed
         if not self._custom_logger:
             self._logger = utils.configure_logger(self.verbose, self.tensorboard_log, tb_log_name, reset_num_timesteps)
+        
+        # Initialize wandb logger
+        if self.wandb_log is not None:
+            wandb.init(config=self.wandb_config)
+            wandb.run.name = self.wandb_log
 
         # Create eval callback if needed
         callback = self._init_callback(callback, eval_env, eval_freq, n_eval_episodes, log_path)

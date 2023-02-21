@@ -12,6 +12,10 @@ from sb3_jax.common.buffers import TrajectoryBuffer
 from sb3_jax.common.evaluation import evaluate_traj_policy
 
 
+max_ep_length = 200
+env_target = 1500
+scale = 1000.
+
 env = HalfCheetahDirEnv([{'direction':1}], include_goal=False)
 obs_space, act_space = env.observation_space, env.action_space
 
@@ -23,8 +27,8 @@ with open(data_path, 'rb') as f:
 buff = TrajectoryBuffer(
     trajectories,
     max_length=20,
-    max_ep_length=1000,
-    scale=1000.,
+    max_ep_length=max_ep_length,
+    scale=scale,
     observation_space=obs_space,
     action_space=act_space,
 )
@@ -40,7 +44,7 @@ dt = DT(
     verbose=1,
     policy_kwargs=dict(
         max_length=20,
-        max_ep_length=1000,
+        max_ep_length=max_ep_length,
         hidden_size=128,
         n_layer=3,
         n_head=1,
@@ -54,29 +58,32 @@ dt = DT(
             weight_decay=1e-4
         )
     ),
+    wandb_log='halfcheetah-vel-test',
 )
 
 mean_reward, _ = evaluate_traj_policy(
     model=dt, 
     env=env, 
     n_eval_episodes=1,
+    max_ep_length=max_ep_length,
     deterministic=True,
     obs_mean=buff.obs_mean,
     obs_std=buff.obs_std,
-    scale=1000.,
-    target_return=12000/1000.,
+    scale=scale,
+    target_return=env_target/scale,
 )
 print(f"Before Learning: {mean_reward}")
-dt.learn(total_timesteps=10_000, log_interval=10)
+dt.learn(total_timesteps=1_000, log_interval=10)
 mean_reward, _ = evaluate_traj_policy(
     model=dt, 
     env=env, 
     n_eval_episodes=1,
+    max_ep_length=max_ep_length,
     deterministic=True,
     obs_mean=buff.obs_mean,
     obs_std=buff.obs_std,
-    scale=1000.,
-    target_return=12000/1000.,
+    scale=scale,
+    target_return=env_target/scale,
 )
 print(f"After Learning: {mean_reward}")
 
@@ -92,7 +99,7 @@ _dt = DT(
     verbose=1,
     policy_kwargs=dict(
         max_length=20,
-        max_ep_length=1000,
+        max_ep_length=max_ep_length,
         hidden_size=128,
         n_layer=3,
         n_head=1,
@@ -113,10 +120,11 @@ mean_reward, _ = evaluate_traj_policy(
     model=dt, 
     env=env, 
     n_eval_episodes=1,
+    max_ep_length=max_ep_length,
     deterministic=True,
     obs_mean=buff.obs_mean,
     obs_std=buff.obs_std,
-    scale=1000.,
-    target_return=12000/1000.,
+    scale=scale,
+    target_return=env_target/scale,
 )
 print(f"Load Learning: {mean_reward}")

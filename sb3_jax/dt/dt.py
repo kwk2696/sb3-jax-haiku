@@ -2,6 +2,7 @@ import time
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+import wandb
 import gym
 import jax
 import jax.numpy as jnp
@@ -26,7 +27,8 @@ class DT(OfflineAlgorithm):
         gamma: float = 0.99,
         gradient_steps: int = 1,
         create_eval_env: bool = False,
-        tensorboard_log: Optional[str] = None, 
+        tensorboard_log: Optional[str] = None,
+        wandb_log: Optional[str] = None,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
         seed: Optional[int] = None,
@@ -41,6 +43,7 @@ class DT(OfflineAlgorithm):
             gamma=gamma,
             gradient_steps=gradient_steps,
             tensorboard_log=tensorboard_log,
+            wandb_log=wandb_log,
             policy_kwargs=policy_kwargs,
             verbose=verbose,
             create_eval_env=create_eval_env,
@@ -99,9 +102,16 @@ class DT(OfflineAlgorithm):
             actor_losses.append(np.array(info["actor_loss"]))
         
         self._n_updates += gradient_steps
-
+        
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         self.logger.record("train/actor_loss", np.mean(actor_losses))
+        
+        # wandb log
+        if self.wandb_log is not None:
+            wandb.log({
+                "train/n_updates": self._n_updates,
+                "train/actor_loss": np.mean(actor_losses)
+            })
 
     @partial(jax.jit, static_argnums=0)
     def _loss(
@@ -153,6 +163,16 @@ class DT(OfflineAlgorithm):
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
     ) -> "DT":
+        
+        # wandb configs
+        self.wandb_config = dict(
+            learning_rate=self.learning_rate,
+            batch_size=self.batch_size,
+            gamma=self.gamma,
+            gradient_steps=self.gradient_steps,
+             
+        )
+        self.wandb_config.update(self.policy._get_constructor_parameters())
 
         return super(DT, self).learn(
             total_timesteps=total_timesteps,
