@@ -45,6 +45,7 @@ class DT(OfflineAlgorithm):
             verbose=verbose,
             create_eval_env=create_eval_env,
             seed=seed,
+            _init_setup_model=False,
             supported_action_spaces=(gym.spaces.Discrete, gym.spaces.Box),
             support_multi_env=False,
         )
@@ -67,7 +68,8 @@ class DT(OfflineAlgorithm):
             #end =  time.time()
             #print("buff", end - start)
             # TODO: do we need preprocessing the other inputs? 
-            observations = self.policy.preprocess(replay_data.observations, training=True)
+            #observations = self.policy.preprocess(replay_data.observations, training=True)
+            observations = replay_data.observations
             actions = replay_data.actions
             if isinstance(self.action_space, gym.spaces.Discrete):
                 actions = actions.squeeze()
@@ -92,6 +94,7 @@ class DT(OfflineAlgorithm):
                 timesteps=timesteps,
                 masks=masks,
                 deterministic=False,
+                rng=next(self.policy.rng),
             )
             actor_losses.append(np.array(info["actor_loss"]))
         
@@ -112,11 +115,12 @@ class DT(OfflineAlgorithm):
         timesteps: jnp.ndarray, 
         masks: jnp.ndarray,
         deterministic: jnp.ndarray,
+        rng=None,
     ) -> Tuple[jnp.ndarray, Tuple[Dict[str, jnp.ndarray]]]:
         
         (observation_preds, action_preds, reward_preds), new_state = self.policy._actor(
             observations, actions, rewards, returns_to_go, timesteps, masks, 
-            deterministic=False, params=params, state=state
+            deterministic=False, params=params, state=state, rng=rng
         )
         action_dim = action_preds.shape[2] 
         #action_preds = action_preds.reshape(-1, action_dim)[masks.reshape(-1) > 0]

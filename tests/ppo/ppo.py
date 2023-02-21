@@ -1,5 +1,7 @@
+import os
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'true'
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
 import gym
-
 from stable_baselines3.common import env_util, vec_env
 from sb3_jax import PPO 
 from sb3_jax.common.evaluation import evaluate_policy
@@ -58,6 +60,7 @@ _ppo = PPO(
         normalization_class=RunningNormLayer
     )
 )
+print("Model Loading...")
 _ppo = _ppo.load(path='./model')
 #print(_ppo.policy.params)
 mean_reward, _ = evaluate_policy(_ppo, env_eval, n_eval_episodes=100)

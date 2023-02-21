@@ -18,6 +18,7 @@ from sb3_jax.common.jax_layers import (
     BaseFeaturesExtractor,
     FlattenExtractor,
 )
+from sb3_jax.common.jax_utils import warmup_scheduler
 from sb3_jax.common.policies import BasePolicy
 from sb3_jax.common.type_aliases import Schedule
 from sb3_jax.common.utils import get_dummy_decision_transformer
@@ -164,6 +165,33 @@ class DTPolicy(BasePolicy):
 
         self._build(lr_schedule)
     
+    def _get_constructor_parameters(self) -> Dict[str, Any]:
+        data = super()._get_constructor_parameters()
+
+        data.update(
+            dict(
+                squash_output=self.squash_output,
+                max_grad_norm=self.max_grad_norm,
+                max_length=self.max_length,
+                max_ep_length=self.max_ep_length,
+                hidden_size=self.hidden_size,
+                n_layer=self.n_layer,
+                n_head=self.n_head,
+                n_inner=self.n_inner,
+                activation_function=self.activaiton_function,
+                n_positions=self.n_positions,
+                resid_prdrop=self.resid_pdrop,
+                attn_pdrop=self.attn_drop, 
+                optimizer_class=self.optimizer_class,
+                optimizer_kwargs=self.optimizer_kwargs,
+                features_extractor_class=self.features_extractor_class,
+                features_extractor_kwargs=self.features_extractor_kwargs,
+                normalization_class=self.normalization_class,
+                normalization_kwargs=self.normalization_kwargs,
+            )
+        )
+        return data
+
     def _build_actor(self) -> hk.Module:
         config = transformers.GPT2Config(
             vocab_size=1, # doesn't matter -- we don't use the vocab
@@ -207,9 +235,19 @@ class DTPolicy(BasePolicy):
             deterministic=False,
         )
         # TODO: optimizer with LambdaLR scheduler
+        """
+        scheduler = warmup_scheduler(init_value=1e-4, warmup_steps=10000)
+        def make_optimizer():
+            return optax.chain(
+            self.optimizer_class(learning_rate=1e-4, **self.optimizer_kwargs),
+            #optax.scale_by_schedule(scheduler),
+            #optax.scale(-1.0)
+        )
+        self.optimizer = make_optimizer
+        """
         self.optimizer = self.optimizer_class(learning_rate=lr_schedule, **self.optimizer_kwargs)
         self.optimizer_state = self.optimizer.init(self.params)
-
+    
     def forward(
         self, 
         observations: jnp.ndarray, 
@@ -220,7 +258,7 @@ class DTPolicy(BasePolicy):
         attention_mask: jnp.ndarray,
         deterministic: bool = False,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        return self._predict(observations, actions, rewards, returns_to_go, timesteps, attention_mask, deterministic)
+        return self._actor(observations, actions, rewards, returns_to_go, timesteps, attention_mask, deterministic, self.params, self.state, next(self.rng))
     
     @partial(jax.jit, static_argnums=0)
     def _actor(
@@ -231,25 +269,62 @@ class DTPolicy(BasePolicy):
         returns_to_go: jnp.ndarray, 
         timesteps: jnp.ndarray,
         attention_mask: jnp.ndarray,
+        deterministic: bool,
         params: hk.Params,
         state: hk.Params,
-        deterministic: bool = False,
-    ) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]:
-        return self.actor(params, state, next(self.rng), observations, actions, rewards, returns_to_go, timesteps, attention_mask, deterministic)
+        rng=None, 
+    ) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], Dict]: 
+        # returns dt output & haiku state 
+        return self.actor(params, state, rng, observations, actions, rewards, returns_to_go, timesteps, attention_mask, deterministic)
+
     
     def _predict(
         self, 
-        observations: jnp.ndarray, 
+        traj_observations: Dict[str, jnp.ndarray], 
+        deterministic: bool = False,
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:        
+        observations, actions, reward, returns_to_go, timesteps, attention_mask = self._preprocess(**traj_observations)
+        (_, action_preds, _), _ = self._actor(observations, actions, None, returns_to_go, timesteps, attention_mask, True, self.params, self.state, next(self.rng))
+        return action_preds[0,-1].reshape(1, -1)
+    
+    @partial(jax.jit, static_argnums=0)
+    def _preprocess(
+        self, 
+        observations: jnp.ndarray,
         actions: jnp.ndarray, 
         rewards: jnp.ndarray, 
         returns_to_go: jnp.ndarray, 
-        timesteps: jnp.ndarray,
-        attention_mask: jnp.ndarray,
-        deterministic: bool = False,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        observations = self.preprocess(observations)
-        return self._actor(observations, actions, rewards, returns_to_go, timesteps, attention_mask, self.params, self.state, deterministic)
-    
+        timesteps: jnp.ndarray, 
+        attention_mask: jnp.ndarray, 
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        observation_dim, action_dim = observations.shape[-1], actions.shape[-1]
+        
+        observations = observations.reshape(1, -1, observation_dim)
+        actions = actions.reshape(1, -1, action_dim)
+        returns_to_go = returns_to_go = returns_to_go.reshape(1, -1, 1)
+        timesteps = timesteps.reshape(1, -1) 
+
+        if self.max_length is not None:
+            observations = observations[:,-self.max_length:]
+            actions = actions[:,-self.max_length:]
+            returns_to_go = returns_to_go[:,-self.max_length:]
+            timesteps = timesteps[:,-self.max_length:]
+
+            # pad all tokents to sequence length
+            attention_mask = jnp.concatenate([jnp.zeros(self.max_length-observations.shape[1]), jnp.ones(observations.shape[1])], dtype=jnp.float32).reshape(1, -1)
+            observations = jnp.concatenate(
+                [jnp.zeros((observations.shape[0], self.max_length-observations.shape[1], observation_dim)), observations], axis=1, dtype=jnp.float32)
+            actions = jnp.concatenate(
+                [jnp.zeros((actions.shape[0], self.max_length-actions.shape[1], action_dim)), actions], axis=1, dtype=jnp.float32)
+            returns_to_go = jnp.concatenate(
+                [jnp.zeros((returns_to_go.shape[0], self.max_length-returns_to_go.shape[1], 1)), returns_to_go], axis=1, dtype=jnp.float32)
+            timesteps = jnp.concatenate(
+                [jnp.zeros((timesteps.shape[0], self.max_length-timesteps.shape[1])), timesteps], axis=1, dtype=jnp.int32)
+        else:
+            attention_mask = None
+        
+        return observations, actions, rewards, returns_to_go, timesteps, attention_mask
+
     def save(self, path: str) -> None:
         """Save model to path."""
 

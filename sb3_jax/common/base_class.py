@@ -434,7 +434,10 @@ class BaseAlgorithm(ABC):
             get_system_info()
 
         data, params = load_from_zip_file(
-            path, custom_objects=custom_objects, verbose=1, print_system_info=print_system_info,
+            path, 
+            custom_objects=custom_objects, 
+            verbose=1, 
+            print_system_info=print_system_info,
         )
 
         if "policy_kwargs" in kwargs and kwargs["policy_kwargs"] != data["policy_kwargs"]:
@@ -442,7 +445,7 @@ class BaseAlgorithm(ABC):
                 f"The specified policy kwargs do not equal the stored policy kwargs."
                 f"Stored kwargs: {data['policy_kwargs']}, specified kwargs: {kwargs['policy_kwargs']}"
             )
-
+        
         if "observation_space" not in data or "action_space" not in data:
             raise KeyError("The observation_space and action_space were not given, can't verify new environments")
 
@@ -466,7 +469,7 @@ class BaseAlgorithm(ABC):
             env=env,
             _init_setup_model=False,  # pytype: disable=not-instantiable,wrong-keyword-args
         )
-
+        
         # load parameters
         model.__dict__.update(data)
         model.__dict__.update(kwargs)

@@ -9,7 +9,7 @@ from stable_baselines3.common import env_util, vec_env
 from sb3_jax import DT
 from sb3_jax.dt.policies import MlpPolicy
 from sb3_jax.common.buffers import TrajectoryBuffer
-
+from sb3_jax.common.evaluation import evaluate_traj_policy
 
 
 env = HalfCheetahDirEnv([{'direction':1}], include_goal=False)
@@ -56,4 +56,67 @@ dt = DT(
     ),
 )
 
-dt.learn(total_timesteps=100_000, log_interval=10)
+mean_reward, _ = evaluate_traj_policy(
+    model=dt, 
+    env=env, 
+    n_eval_episodes=1,
+    deterministic=True,
+    obs_mean=buff.obs_mean,
+    obs_std=buff.obs_std,
+    scale=1000.,
+    target_return=12000/1000.,
+)
+print(f"Before Learning: {mean_reward}")
+dt.learn(total_timesteps=10_000, log_interval=10)
+mean_reward, _ = evaluate_traj_policy(
+    model=dt, 
+    env=env, 
+    n_eval_episodes=1,
+    deterministic=True,
+    obs_mean=buff.obs_mean,
+    obs_std=buff.obs_std,
+    scale=1000.,
+    target_return=12000/1000.,
+)
+print(f"After Learning: {mean_reward}")
+
+dt.save(path='./model')
+
+# Loading Model
+_dt = DT(
+    policy=MlpPolicy,
+    env=env,
+    replay_buffer=buff,
+    learning_rate=1e-4,
+    batch_size=256,
+    verbose=1,
+    policy_kwargs=dict(
+        max_length=20,
+        max_ep_length=1000,
+        hidden_size=128,
+        n_layer=3,
+        n_head=1,
+        n_inner=4*128,
+        activation_function='relu',
+        n_positions=1024,
+        resid_pdrop=.1,
+        attn_pdrop=.1,
+        max_grad_norm=.25,
+        optimizer_kwargs=dict(
+            weight_decay=1e-4
+        )
+    ),
+)
+print("Model Loading...")
+_dt = _dt.load(path='./model')
+mean_reward, _ = evaluate_traj_policy(
+    model=dt, 
+    env=env, 
+    n_eval_episodes=1,
+    deterministic=True,
+    obs_mean=buff.obs_mean,
+    obs_std=buff.obs_std,
+    scale=1000.,
+    target_return=12000/1000.,
+)
+print(f"Load Learning: {mean_reward}")

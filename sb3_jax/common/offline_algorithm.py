@@ -33,6 +33,7 @@ class OfflineAlgorithm(BaseAlgorithm):
         seed: Optional[int] = None,
         use_sde: bool = False,
         sde_sample_freq: int = -1,
+        _init_setup_model: bool = True,
         supported_action_spaces: Optional[Tuple[gym.spaces.Space, ...]] = None, 
     ):
         super(OfflineAlgorithm, self).__init__(
@@ -60,12 +61,13 @@ class OfflineAlgorithm(BaseAlgorithm):
         self.replay_buffer = replay_buffer
 
         self.actor = None
-        self._setup_model() 
+        if _init_setup_model:
+            self._setup_model() 
 
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
-
+        
         self.policy = self.policy_class(
             self.observation_space,
             self.action_space,
@@ -114,22 +116,4 @@ class OfflineAlgorithm(BaseAlgorithm):
 
         callback.on_training_end()
         
-        return self
-    
-    """
-    def _save_jax_params(self) -> Dict[str, hk.Params]:
-        params_dict = {}
-        params_dict['policy'] = self.policy.params 
-        return params_dict
-
-    def _load_jax_params(self, params: Dict[str, hk.Params]) -> None:
-        self.policy.params = params['policy']
-
-    def _save_norm_layer(self, path: str) -> None:
-        if self.policy.normalization_class is not None:
-            self.policy.normalization_layer.save(path)
-    
-    def _load_norm_layer(self, path: str) -> None:
-        if self.policy.normalization_class is not None:
-            self.policy.normalization_layer = self.policy.normalization_layer.load(path)
-    """
+        return self 

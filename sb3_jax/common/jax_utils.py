@@ -5,7 +5,7 @@ import jax
 import optax
 import jax.numpy as jnp
 import haiku as hk
-
+from optax._src.base import Schedule
 
 @partial(jax.jit, static_argnums=(0, 1, 4))
 def jit_optimize(
@@ -93,3 +93,10 @@ def explained_variance(
     """Computes fraction of variance that ypred expalined about y."""
     var_y = jnp.var(y_true)
     return 1 - jnp.var(y_true - y_pred) / var_y
+
+# Learning Schedulers for Jax
+def warmup_scheduler(init_value: float, warmup_steps: int) -> Schedule:
+    def schedule(count):
+        return jnp.minimum((count + 1)/warmup_steps, 1.) * init_value
+    return schedule
+       

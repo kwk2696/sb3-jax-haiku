@@ -109,15 +109,18 @@ class BaseModel(ABC):
         if isinstance(observation, dict):
             # need to copy the dict as the dict in VecFrameStack will become a torch tensor
             observation = copy.deepcopy(observation)
-            for key, obs in observation.items():
-                obs_space = self.observation_space.spaces[key]
-                if is_image_space(obs_space):
-                    obs_ = maybe_transpose(obs, obs_space)
-                else:
-                    obs_ = np.array(obs)
-                vectorized_env = vectorized_env or is_vectorized_observation(obs_, obs_space)
-                # Add batch dimension if needed
-                observation[key] = obs_.reshape((-1,) + self.observation_space[key].shape)
+            # for some algo e.g. DT, observation_space and predict input does not match
+            # thus, in this case we check the observation_space
+            if isinstance(self.observation_space, gym.spaces.Dict): 
+                for key, obs in observation.items():
+                    obs_space = self.observation_space.spaces[key]
+                    if is_image_space(obs_space):
+                        obs_ = maybe_transpose(obs, obs_space)
+                    else:
+                        obs_ = np.array(obs)
+                    vectorized_env = vectorized_env or is_vectorized_observation(obs_, obs_space)
+                    # Add batch dimension if needed
+                    observation[key] = obs_.reshape((-1,) + self.observation_space[key].shape)
 
         elif is_image_space(self.observation_space):
             # Handle the different cases for images

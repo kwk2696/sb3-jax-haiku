@@ -1,4 +1,5 @@
 import warnings
+import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import gym
@@ -7,6 +8,7 @@ import numpy as np
 from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecMonitor, is_vecenv_wrapped
 
 from sb3_jax.common import base_class
+from sb3_jax.common.preprocessing import get_flattened_obs_dim, get_action_dim
 
 
 def evaluate_policy(
@@ -95,6 +97,75 @@ def evaluate_policy(
     std_reward = np.std(episode_rewards)
     if reward_threshold is not None:
         assert mean_reward > reward_threshold, "Mean reward below threshold: " f"{mean_reward:.2f} < {reward_threshold:.2f}"
+    if return_episode_rewards:
+        return episode_rewards, episode_lengths
+    return mean_reward, std_reward
+
+
+def evaluate_traj_policy(
+    model: "base_class.BaseAlgorithm", 
+    env: gym.Env,
+    n_eval_episodes: int = 100,
+    deterministic: bool = True, 
+    obs_mean: float = 0.0,
+    obs_std: float = 0.0,
+    scale: float = 1000.,
+    target_return: float = None,
+    return_episode_rewards: bool = False,
+) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
+    """Runs trajectory policy, e.g. DT and returns average reward."""
+    obs_dim, act_dim = get_flattened_obs_dim(env.observation_space), get_action_dim(env.action_space) 
+
+    episode_rewards = []
+    episode_lengths = []
+    
+    for epi in range(n_eval_episodes):
+        observations = env.reset()
+        
+        # we keep all the histories
+        # note that the latest action and reward will be "padding"
+        observations = np.array(observations, dtype=np.float32).reshape(1, obs_dim)
+        actions = np.zeros((0, act_dim), dtype=np.float32)
+        rewards = np.zeros(0, dtype=np.float32)
+        ep_return = target_return
+        target_return = np.array(ep_return, dtype=np.float32).reshape(1, 1)
+        timesteps = np.array(0, dtype=np.int32).reshape(1,1)
+        
+        current_reward, current_length = 0, 0
+        while True:
+            
+            actions = np.concatenate([actions, np.zeros((1, act_dim))], axis=0)
+            rewards = np.concatenate([rewards, np.zeros(1)])
+            
+            traj_obs = {
+                "observations": (observations - obs_mean) / obs_std, 
+                "actions": actions,
+                "rewards": rewards, 
+                "returns_to_go": target_return, 
+                "timesteps": timesteps,
+                "attention_mask": None,
+            }
+            action, _ = model.predict(traj_obs, deterministic=deterministic)
+            actions[-1] = action
+            
+            observation, reward, done, _ = env.step(action)
+            rewards[-1] = reward 
+
+            pred_return = target_return[0,-1] - (reward / scale)
+            target_return = np.concatenate([target_return, pred_return.reshape(1, 1)], axis=1)
+            timesteps = np.concatenate([timesteps, np.ones((1,1), dtype=np.int32) * (current_length+1)], axis=1)
+            
+            current_reward += reward
+            current_length += 1
+            
+            if current_length == 999:
+                episode_rewards.append(current_reward)
+                episode_lengths.append(current_length)
+                break
+
+    mean_reward = np.mean(episode_rewards)
+    std_reward = np.std(episode_rewards)
+
     if return_episode_rewards:
         return episode_rewards, episode_lengths
     return mean_reward, std_reward
