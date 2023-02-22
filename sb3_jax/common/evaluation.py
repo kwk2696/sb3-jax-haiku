@@ -173,3 +173,43 @@ def evaluate_traj_policy(
     if return_episode_rewards:
         return episode_rewards, episode_lengths
     return mean_reward, std_reward
+
+
+def evaluate_mt_traj_policy(
+    model: "base_class.BaseAlgorithm",
+    envs: List[gym.Env],
+    n_eval_episodes: int = 100,
+    max_ep_length: int = None,
+    deterministic: bool = True, 
+    obs_means: List[float] = None,
+    obs_stds: List[float] = None,
+    scale: float = 1000.,
+    target_returns: List[float] = None,
+    return_episode_rewards: bool = False,
+    verbose: bool = False,
+) -> None:
+    """evaluation for multi-task traj envs."""
+    mean_rewards, std_rewards = [], [] 
+
+    for i, env in enumerate(envs):
+        mean_reward, std_reward = evaluate_traj_policy(
+            model, 
+            env, 
+            n_eval_episodes, 
+            max_ep_length, 
+            deterministic,
+            obs_means[i],
+            obs_stds[i],
+            scale,
+            target_returns[i],
+            return_episode_rewards, 
+        )
+        mean_rewards.append(mean_reward)
+        std_rewards.append(std_reward)
+        
+        if verbose:
+            print("="*10)
+            print(f"{i}-th task return mean: {mean_reward}")
+            print(f"{i}-th task return mean: {std_reward}")
+
+    return mean_rewards, std_rewards

@@ -416,6 +416,68 @@ class OfflineBuffer(BaseBuffer):
             return pickle.load(f)
 
 
+class MTTrajectoryBuffer(BaseBuffer):
+    """Multi-task trajectory buffer."""
+
+    def __init__(
+        self,
+        max_length: int,
+        max_ep_length: int,
+        scale: float,
+        buffer_size: int = None,
+        observation_space: spaces.Space = None,
+        action_space: spaces.Space = None,
+        n_envs: int = 1, # Not used
+    ):
+        super(MTTrajectoryBuffer, self).__init__(buffer_size, observation_space, action_space)
+        self._buffers = []
+        self.max_length = max_length
+        self.max_ep_length = max_ep_length
+        self.scale = scale
+    
+    @property
+    def buffers(self):
+        return self._buffers
+
+    def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+        # sample batch_size per task
+        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
+        for buff in self.buffers:
+            samples = buff.sample(batch_size)
+            observations.append(samples.observations)
+            actions.append(samples.actions)
+            rewards.append(samples.rewards)
+            dones.append(samples.dones)
+            returns_to_go.append(samples.returns_to_go)
+            timesteps.append(samples.timesteps)
+            masks.append(samples.masks)
+
+        # concatenate
+        data = (
+            jnp.concatenate(observations),
+            jnp.concatenate(actions),
+            jnp.concatenate(rewards),
+            jnp.concatenate(dones),
+            jnp.concatenate(returns_to_go),
+            jnp.concatenate(timesteps),
+            jnp.concatenate(masks),
+        )
+        return TrajectoryBufferSamples(*tuple(data))
+
+    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+        raise NotImplementedError
+
+    def add_task(self, trajectories: Dict[str, np.ndarray]) -> None:
+        self.buffers.append(TrajectoryBuffer(
+            trajectories,
+            self.max_length,
+            self.max_ep_length,
+            self.scale,
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+        ))
+    
+
 class TrajectoryBuffer(BaseBuffer):
     """Buffer used in DT."""
 
@@ -428,7 +490,7 @@ class TrajectoryBuffer(BaseBuffer):
         buffer_size: int = None,
         observation_space: spaces.Space = None,
         action_space: spaces.Space = None,
-        n_envs: int = 1,
+        n_envs: int = 1, # Not used
     ):
         super(TrajectoryBuffer, self).__init__(buffer_size, observation_space, action_space) 
         self.trajectories = trajectories
@@ -530,4 +592,3 @@ class TrajectoryBuffer(BaseBuffer):
         for t in reversed(range(x.shape[0]-1)):
             discount_cumsum[t] = x[t] + gamma * discount_cumsum[t+1]
         return discount_cumsum
-
