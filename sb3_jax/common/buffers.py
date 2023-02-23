@@ -96,6 +96,14 @@ class BaseBuffer(ABC):
         if env is not None:
             return env.normalize_reward(reward).astype(np.float32)
         return reward
+    
+    def save(self, path: str) -> None:
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
+
+    def load(self, path:str) -> Any:
+        with open(path, "rb") as f:
+            return pickle.load(f)
 
 
 class RolloutBuffer(BaseBuffer):
@@ -406,14 +414,6 @@ class OfflineBuffer(BaseBuffer):
             self.rewards[batch_inds, env_indices].reshape(-1, 1),
         )
         return ReplayBufferSamples(*tuple(map(self.to_jnp, data)))
-
-    def save(self, path: str) -> None:
-        with open(path, "wb") as f:
-            pickle.dump(self, f)
-
-    def load(self, path: str) -> Any:
-        with open(path, "rb") as f:
-            return pickle.load(f)
 
 
 class MTTrajectoryBuffer(BaseBuffer):
