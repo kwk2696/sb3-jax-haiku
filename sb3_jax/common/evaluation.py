@@ -114,13 +114,15 @@ def evaluate_traj_policy(
     scale: float = 1000.,
     target_return: float = None,
     return_episode_rewards: bool = False,
+    random_action: bool = False,
 ) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
     """Runs trajectory policy, e.g. DT and returns average reward."""
     obs_dim, act_dim = get_flattened_obs_dim(env.observation_space), get_action_dim(env.action_space) 
 
     episode_rewards = []
     episode_lengths = []
-    
+    ep_return = target_return
+
     for epi in range(n_eval_episodes):
         observation = env.reset()
         
@@ -129,7 +131,6 @@ def evaluate_traj_policy(
         observations = np.array(observation, dtype=np.float32).reshape(1, obs_dim)
         actions = np.zeros((0, act_dim), dtype=np.float32)
         rewards = np.zeros(0, dtype=np.float32)
-        ep_return = target_return
         target_return = np.array(ep_return, dtype=np.float32).reshape(1, 1)
         timesteps = np.array(0, dtype=np.int32).reshape(1,1)
         
@@ -147,8 +148,11 @@ def evaluate_traj_policy(
                 "timesteps": timesteps,
                 "attention_mask": None,
             }
-            action, _ = model.predict(traj_obs, deterministic=deterministic)
-            actions[-1] = action
+            if random_action:
+                action = env.action_space.sample()
+            else:
+                action, _ = model.predict(traj_obs, deterministic=deterministic)
+                actions[-1] = action
             
             observation, reward, done, _ = env.step(action)
 
@@ -186,6 +190,7 @@ def evaluate_mt_traj_policy(
     scale: float = 1000.,
     target_returns: List[float] = None,
     return_episode_rewards: bool = False,
+    random_action: bool = False,
     verbose: bool = False,
 ) -> None:
     """evaluation for multi-task traj envs."""
@@ -203,6 +208,7 @@ def evaluate_mt_traj_policy(
             scale,
             target_returns[i],
             return_episode_rewards, 
+            random_action,
         )
         mean_rewards.append(mean_reward)
         std_rewards.append(std_reward)
@@ -210,6 +216,6 @@ def evaluate_mt_traj_policy(
         if verbose:
             print("="*10)
             print(f"{i}-th task return mean: {mean_reward}")
-            print(f"{i}-th task return mean: {std_reward}")
+            print(f"{i}-th task return stdv: {std_reward}")
 
     return mean_rewards, std_rewards

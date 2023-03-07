@@ -434,6 +434,7 @@ class BaseAlgorithm(ABC):
         custom_objects: Optional[Dict[str, Any]] = None,
         print_system_info: bool = False,
         force_reset: bool = True,
+        load_data: bool = True,
         **kwargs,
     ) -> "BaseAlgorithm":
         """Load the model from a zip-file."""

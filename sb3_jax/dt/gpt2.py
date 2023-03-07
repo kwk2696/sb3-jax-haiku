@@ -86,7 +86,7 @@ class GPT2Attention(hk.Module):
         self.config = config
         self.dtype = dtype
         self.causal = causal
-
+    
         self.embed_dim = self.config.hidden_size
         self.num_heads = 1 #self.config.n_head
         self.head_dim = self.embed_dim // self.num_heads
@@ -119,7 +119,6 @@ class GPT2Attention(hk.Module):
         query = self._split_heads(query)
         key = self._split_heads(key)
         value = self._split_heads(value)
-
         query_length, key_length = query.shape[1], key.shape[1]
 
         if self.causal:
@@ -141,7 +140,6 @@ class GPT2Attention(hk.Module):
             attention_mask = causal_mask
         elif attention_mask is not None:
             attention_mask = jnp.expand_dims(attention_mask, axis=(-3, -2))
-    
         dropout_rng = hk.next_rng_key()
         
         if self.causal and (has_state(self.state_dict().keys(), self.name, "cached_key") or init_cache):
@@ -229,7 +227,7 @@ class GPT2Attention(hk.Module):
         query = query / jnp.sqrt(depth).astype(dtype)
         # attn weight shape is (batch ..., num_heads, q_length, kv_length)
         attn_weights = jnp.einsum('...qhd,...khd->...hqk', query, key)
-
+        
         # apply attention bias: masking, dropout, proximity bias, etc. 
         if bias is not None:
             attn_weights = attn_weights + bias
@@ -240,7 +238,7 @@ class GPT2Attention(hk.Module):
         
         # normalize the attention weights
         attn_weights = jax.nn.softmax(attn_weights).astype(dtype)
-
+        
         # apply attention dropout
         keep_prob = 1.0 - dropout_rate
         if broadcast_dropout: 
@@ -304,6 +302,7 @@ class GPT2Block(hk.Module):
     ):
         residual = hidden_states
         hidden_states = hk.LayerNorm(-1, create_scale=True, create_offset=True, eps=self.config.layer_norm_epsilon, name='ln_1')(hidden_states)
+
         attn_outputs = GPT2Attention(self.config, dtype=self.dtype)(
             hidden_states,
             attention_mask=attention_mask,

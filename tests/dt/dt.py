@@ -117,7 +117,7 @@ _dt = DT(
 print("Model Loading...")
 _dt = _dt.load(path='../model/dt')
 mean_reward, _ = evaluate_traj_policy(
-    model=dt, 
+    model=_dt, 
     env=env, 
     n_eval_episodes=1,
     max_ep_length=max_ep_length,

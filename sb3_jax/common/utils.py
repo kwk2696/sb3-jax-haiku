@@ -69,17 +69,25 @@ def get_dummy_transition(
     action = get_dummy_act(action_space)
     next_observation = get_dummy_obs(observation_space)
     done = get_dummy_done()
+
     return observation, action, next_observation, done
 
 def get_dummy_decision_transformer(
     observation_space: gym.spaces,
     action_space: gym.spaces,
+    repeat: int = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     observation = get_dummy_obs(observation_space)[None, ...] # for expanding squence
     action = get_dummy_act(action_space)[None, ...]
     reward = get_dummy_done()[None, ...]
     return_to_go = get_dummy_done()[None, ...]
     timestep = get_dummy_timestep()
+    if repeat is not None:
+        observation = np.repeat(observation, repeat, axis=0)
+        action = np.repeat(action, repeat, axis=0)
+        reward = np.repeat(reward, repeat, axis=0)
+        return_to_go = np.repeat(return_to_go, repeat, axis=0)
+        timestep = np.repeat(timestep, repeat, axis=0)
     return observation, action, reward, return_to_go, timestep 
     
 def set_random_seed(seed: int) -> None:
