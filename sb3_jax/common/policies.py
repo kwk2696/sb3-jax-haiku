@@ -158,7 +158,7 @@ class BasePolicy(BaseModel):
         return self._squash_output
 
     @abstractmethod
-    def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
+    def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
         """Get the action according to the policy for a given observation."""
  
     def predict(
@@ -167,12 +167,12 @@ class BasePolicy(BaseModel):
         state: Optional[Tuple[np.ndarray, ...]] = None,
         episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]], Optional[Dict[str, Any]]]:
         """Get the policy action from an observation (and optional hidden state)."""
         
         observation, vectorized_env = self.obs_to_jnp(observation)
 
-        actions = self._predict(observation, deterministic=deterministic)
+        actions, info = self._predict(observation, deterministic=deterministic)
         # Convert to numpy
         actions = np.array(actions)
 
@@ -189,7 +189,7 @@ class BasePolicy(BaseModel):
         if not vectorized_env:
             actions = actions[0]
 
-        return actions, state
+        return actions, state, info
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """Rescale the action from [low, high] to [-1, 1]."""
@@ -362,10 +362,10 @@ class ActorCriticPolicy(BasePolicy):
     def _value(self, observation: jnp.ndarray, params: hk.Params) -> jnp.ndarray:
         return self.value(params, observation)
 
-    def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
+    def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
         observation = self.preprocess(observation)
         mean_actions, log_std = self._actor(observation, self.params)
-        return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
+        return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng)), None
     
     def evaluate_actions(self, observation: jnp.ndarray, actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         observation = self.preprocess(observation)

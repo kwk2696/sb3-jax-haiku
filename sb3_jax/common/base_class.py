@@ -411,7 +411,7 @@ class BaseAlgorithm(ABC):
         state: Optional[Tuple[np.ndarray, ...]] = None,
         episode_start: Optional[np.ndarray] = None,
         deterministic: bool = False,
-    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
+    ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]], Optional[Dict[str, Any]]]:
         """Get the policy action from an observation (and optional hidden state)."""
         return self.policy.predict(observation, state, episode_start, deterministic)
 

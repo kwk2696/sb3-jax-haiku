@@ -130,7 +130,7 @@ class DT(OfflineAlgorithm):
         rng=None,
     ) -> Tuple[jnp.ndarray, Tuple[Dict[str, jnp.ndarray]]]:
         
-        (observation_preds, action_preds, reward_preds), new_state = self.policy._actor(
+        (observation_preds, action_preds, reward_preds, _), new_state = self.policy._actor(
             observations, actions, rewards, returns_to_go, timesteps, masks, None, 
             deterministic=False, params=params, state=state, rng=rng
         )
@@ -318,7 +318,7 @@ class PDT(OfflineAlgorithm):
         pretrained_state: hk.Params,
         pretrained_rng=None,
     ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
-        (observation_preds, action_preds, reward_preds), _  = self.policy._actor(
+        (observation_preds, action_preds, reward_preds, _), _  = self.policy._actor(
             observations, actions, rewards, returns_to_go, timesteps, masks, 
             deterministic=False, params=params, pretrained_params=pretrained_params,
             pretrained_state=pretrained_state, pretrained_rng=pretrained_rng,

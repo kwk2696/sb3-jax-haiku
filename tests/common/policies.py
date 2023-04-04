@@ -26,9 +26,9 @@ actor_critic_policy = policies.ActorCriticPolicy(
 
 
 obs = utils.get_dummy_obs(obs_space)
-action_det, _ = actor_critic_policy.predict(obs, deterministic=True)
+action_det, _, _ = actor_critic_policy.predict(obs, deterministic=True)
 print(f"Deterministic Action: {action_det}")
-action_stc, _ = actor_critic_policy.predict(obs, deterministic=False)
+action_stc, _, _ = actor_critic_policy.predict(obs, deterministic=False)
 print(f"Stochastic Action: {action_stc}")
 values, log_prob, entropy = actor_critic_policy.evaluate_actions(obs, action_stc)
 print(f"Value Function: {values}")
@@ -62,9 +62,9 @@ actor_critic_policy = policies.ActorCriticPolicy(
 
 
 obs = utils.get_dummy_obs(obs_space)
-action_det, _ = actor_critic_policy.predict(obs, deterministic=True)
+action_det, _, _ = actor_critic_policy.predict(obs, deterministic=True)
 print(f"Deterministic Action: {action_det}")
-action_stc, _ = actor_critic_policy.predict(obs, deterministic=False)
+action_stc, _, _ = actor_critic_policy.predict(obs, deterministic=False)
 print(f"Stochastic Action: {action_stc}")
 values, log_prob, entropy = actor_critic_policy.evaluate_actions(obs, action_stc)
 print(f"Value Function: {values}")

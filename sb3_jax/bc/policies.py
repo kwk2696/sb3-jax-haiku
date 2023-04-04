@@ -136,19 +136,20 @@ class BCPolicy(BasePolicy):
         self.optimizer_state = self.optimizer.init(self.params)
     
     def forward(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
-        return self._predict(observation, deterministic=deterministic)
-    
+        action, _ =self._predict(observation, deterministic=deterministic)
+        return action
+
     @partial(jax.jit, static_argnums=0)
     def _actor(self, observation: jnp.ndarray, params: hk.Params) -> jnp.ndarray:
         return self.actor(params, observation)
 
-    def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
+    def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
         observation = self.preprocess(observation)
         if self.use_dist:
             mean_actions, log_std = self._actor(observation, self.params)
-            return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
+            return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng)), None
         else:
-            return self._actor(observation, self.params)
+            return self._actor(observation, self.params), None
     
     def evaluate_actions(self, observation: jnp.ndarray, actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         observation = self.preprocess(observation)

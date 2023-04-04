@@ -434,7 +434,9 @@ class MTTrajectoryBuffer(BaseBuffer):
         self.max_length = max_length
         self.max_ep_length = max_ep_length
         self.scale = scale
-    
+        
+        self.obs_means, self.obs_stds = [], []
+
     @property
     def buffers(self):
         return self._buffers
@@ -476,7 +478,17 @@ class MTTrajectoryBuffer(BaseBuffer):
             observation_space=self.observation_space,
             action_space=self.action_space,
         ))
+        self.obs_means.append(self.buffers[-1].obs_mean)
+        self.obs_stds.append(self.buffers[-1].obs_std)
     
+    def set_avg_obs(self, obs_mean: np.ndarray, obs_std: np.ndarray):
+        self.obs_means, self.obs_stds = [], []
+        for buff in self.buffers:
+            buff.obs_mean = obs_mean
+            buff.obs_std = obs_std
+            self.obs_means.append(buff.obs_mean)
+            self.obs_stds.append(buff.obs_std)
+
 
 class TrajectoryBuffer(BaseBuffer):
     """Buffer used in DT."""

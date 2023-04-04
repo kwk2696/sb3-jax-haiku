@@ -138,7 +138,8 @@ class TrajectoryModel(hk.Module):
             deterministic=deterministic
         )
         x = transformer_outputs["last_hidden_state"]
-        
+        info = {"last_hidden_state": x} 
+
         if (self.use_id or self.use_prompt) or prompt is not None:
             # discard prompt output, then reshaping 
             #print("Yes Prompt:", x.shape)
@@ -156,7 +157,7 @@ class TrajectoryModel(hk.Module):
         action_preds = hk.Linear(self.action_dim, **init_weights())(x[:,1]) # predict next action given state
         if self.squash_action: 
             action_preds = nn.tanh(action_preds)
-        return observation_preds, action_preds, return_preds 
+        return observation_preds, action_preds, return_preds, info
        
 
 class PromptModel(hk.Module):
@@ -374,13 +375,13 @@ class DTPolicy(BasePolicy):
         self, 
         traj_observations: Dict[str, jnp.ndarray], 
         deterministic: bool = False,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:      
+    ) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
         observations, actions, reward, returns_to_go, timesteps, attention_mask = self._preprocess(**traj_observations)
-        (_, action_preds, _), _ = self._actor(
+        (_, action_preds, _, info), _ = self._actor(
             observations, actions, None, returns_to_go, timesteps, attention_mask, self.task_id, 
             True, self.params, self.state, next(self.rng)
         )
-        return action_preds[0,-1].reshape(1, -1)
+        return action_preds[0,-1].reshape(1, -1), info
     
     @partial(jax.jit, static_argnums=0)
     def _preprocess(
@@ -540,11 +541,11 @@ class PDTPolicy(BasePolicy):
         self, 
         traj_observations: Dict[str, jnp.ndarray], 
         deterministic: bool = False,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:        
+    ) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
         observations, actions, reward, returns_to_go, timesteps, attention_mask = self.pretrained_policy._preprocess(**traj_observations)
-        (_, action_preds, _), _ = self._actor(observations, actions, None, returns_to_go, timesteps, attention_mask, True, self.params,
+        (_, action_preds, _, info), _ = self._actor(observations, actions, None, returns_to_go, timesteps, attention_mask, True, self.params,
             self.pretrained_policy.params, self.pretrained_policy.state, next(self.pretrained_policy.rng))
-        return action_preds[0,-1].reshape(1, -1)
+        return action_preds[0,-1].reshape(1, -1), info
     
     @property
     def pretrained_policy(self) -> DTPolicy:

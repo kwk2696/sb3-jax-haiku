@@ -55,7 +55,7 @@ def evaluate_policy(
     states = None
     episode_starts = np.ones((env.num_envs,), dtype=bool)
     while (episode_counts < episode_count_targets).any():
-        actions, states = model.predict(observations, state=states, episode_start=episode_starts, deterministic=deterministic)
+        actions, states, _ = model.predict(observations, state=states, episode_start=episode_starts, deterministic=deterministic)
         observations, rewards, dones, infos = env.step(actions)
         current_rewards += rewards
         current_lengths += 1
@@ -114,6 +114,7 @@ def evaluate_traj_policy(
     scale: float = 1000.,
     target_return: float = None,
     return_episode_rewards: bool = False,
+    return_episode_infos: bool = False,
     random_action: bool = False,
 ) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
     """Runs trajectory policy, e.g. DT and returns average reward."""
@@ -122,6 +123,7 @@ def evaluate_traj_policy(
     episode_rewards = []
     episode_lengths = []
     ep_return = target_return
+    episode_infos = []
 
     for epi in range(n_eval_episodes):
         observation = env.reset()
@@ -134,7 +136,7 @@ def evaluate_traj_policy(
         target_return = np.array(ep_return, dtype=np.float32).reshape(1, 1)
         timesteps = np.array(0, dtype=np.int32).reshape(1,1)
         
-        current_reward, current_length = 0, 0
+        current_reward, current_length, current_info = 0, 0, []
         while True:
             
             actions = np.concatenate([actions, np.zeros((1, act_dim))], axis=0)
@@ -151,7 +153,7 @@ def evaluate_traj_policy(
             if random_action:
                 action = env.action_space.sample()
             else:
-                action, _ = model.predict(traj_obs, deterministic=deterministic)
+                action, _, info = model.predict(traj_obs, deterministic=deterministic)
                 actions[-1] = action
             
             observation, reward, done, _ = env.step(action)
@@ -165,10 +167,12 @@ def evaluate_traj_policy(
             
             current_reward += reward
             current_length += 1
+            current_info.append(info)
             
             if done or (max_ep_length is not None and current_length == max_ep_length):
                 episode_rewards.append(current_reward)
                 episode_lengths.append(current_length)
+                episode_infos.append(current_info)
                 break
 
     mean_reward = np.mean(episode_rewards)
@@ -176,6 +180,8 @@ def evaluate_traj_policy(
 
     if return_episode_rewards:
         return episode_rewards, episode_lengths
+    if return_episode_infos:
+        return mean_reward, episode_infos
     return mean_reward, std_reward
 
 
