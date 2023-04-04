@@ -18,7 +18,7 @@ from sb3_jax.common.jax_layers import init_weights
 
 # CAP the standard deviation of actor
 LOG_STD_MAX = 2
-LOG_STD_MIN = -2
+LOG_STD_MIN = -20
 
 
 @partial(jax.jit, static_argnums=1)
@@ -33,7 +33,6 @@ class Distribution(hk.Module, ABC):
 
 class DiagGaussianDistribution(Distribution):
     """Gaussian distribution with diagonal covariance matrix, for continuous actions."""
-
     def __init__(
         self, 
         action_dim: int, 
@@ -52,7 +51,29 @@ class DiagGaussianDistribution(Distribution):
             log_std = hk.Linear(self.action_dim, **init_weights(gain=0.01))(latent_pi) 
         else: 
             log_std = hk.get_parameter("log_std", (self.action_dim,), init=hk.initializers.Constant(self.log_std_init))
-        #log_std = jnp.clip(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        return mean_actions, log_std
+
+
+class SquashedDiagGaussianDistribution(Distribution):
+    """Guassian distribution with diagonal covariance matrix, followed by a squashing function (tanh) to ensure bound."""
+    def __init__(
+        self,
+        action_dim: int,
+        log_std_init: float = 0.0,
+        state_std: bool = False,
+    ):
+        super(SquashedDiagGaussianDistribution, self).__init__()
+        self.action_dim = action_dim
+        self.log_std_init = log_std_init
+        self.state_std = state_std
+        
+    def __call__(self, latent_pi: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        mean_actions = hk.Linear(self.action_dim, **init_weights())(latent_pi)
+        if self.state_std: 
+            log_std = hk.Linear(self.action_dim, **init_weights(gain=0.01))(latent_pi) 
+        else: 
+            log_std = hk.get_parameter("log_std", (self.action_dim,), init=hk.initializers.Constant(self.log_std_init))
+        log_std = jnp.clip(log_std, LOG_STD_MIN, LOG_STD_MAX)
         return mean_actions, log_std
 
 
@@ -135,6 +156,32 @@ class DiagGaussianDistributionFn(DistributionFn):
         entropy = sum_independent_dims(entropy, 1) if len(entropy.shape) > 1 else sum_independent_dims(entropy, None)
         return entropy
       
+
+class SquashedDiagGaussianDistributionFn(DiagGaussianDistributionFn):
+    def __init__(self):
+        super(SquashedDiagGaussianDistributionFn, self).__init__()
+    
+    @partial(jax.jit, static_argnums=0)
+    def sample(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: jnp.ndarray) -> jnp.ndarray: 
+        gaussian_actions = super().sample(mean_actions, log_std, key)
+        # Squash the output
+        return nn.tanh(gaussian_actions)
+
+    @partial(jax.jit, static_argnums=0)
+    def mode(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
+        gaussian_actions = super().mode(mean_actions, log_std)
+        return nn.tanh(gaussian_actions)
+
+    @partial(jax.jit, static_argnums=0)
+    def log_prob(self, actions: jnp.ndarray, gaussian_actions: jnp.ndarray, log_std: jnp.ndarray): 
+        log_prob = super(SquashedDiagGaussianDistributionFn, self).log_prob(actions, gaussian_actions, log_std)
+        return log_prob
+    
+    @partial(jax.jit, static_argnums=0)
+    def entropy(self) -> jnp.ndarray:
+        return None
+
+
 
 class CategoricalDistributionFn(DistributionFn):
     def __init__(self):

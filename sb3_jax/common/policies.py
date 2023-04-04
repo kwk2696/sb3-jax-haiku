@@ -381,6 +381,24 @@ class ActorCriticPolicy(BasePolicy):
         return value
 
 
+class ContinuousCritic(BaseModel):
+    """Critic network(s) for SAC."""
+    def __init__(
+        self,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        net_arch: List[int],
+        activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu,
+        normalize_images: bool = True,
+        n_critics: int = 2,
+    ):
+        super().__init__(
+            observation_space,
+            action_space,
+            normalize_images=normalize_images,
+        )
+
+
 _policy_registry = dict() # type: Dict[Type[BasePolicy], Dict[str, Type[BasePolicy]]]
 
 
