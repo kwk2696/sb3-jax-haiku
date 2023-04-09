@@ -53,6 +53,10 @@ def jit_optimize_with_state(
     return optimizer_state, params, new_state, loss, aux
 
 
+def detach(x: jnp.ndarray):
+    return jax.lax.stop_gradient(x)
+
+
 @jax.jit
 def clip_gradient(
     grad: Dict,

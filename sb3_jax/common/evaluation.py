@@ -28,18 +28,18 @@ def evaluate_policy(
     # Avoid circular import
     from stable_baselines3.common.monitor import Monitor
 
-    if not isinstance(env, VecEnv):
-        env = DummyVecEnv([lambda: env])
+    #if not isinstance(env, VecEnv):
+    #    env = DummyVecEnv([lambda: env])
 
-    is_monitor_wrapped = is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]
+    #is_monitor_wrapped = is_vecenv_wrapped(env, VecMonitor) or env.env_is_wrapped(Monitor)[0]
 
-    if not is_monitor_wrapped and warn:
-        warnings.warn(
-            "Evaluation environment is not wrapped with a ``Monitor`` wrapper. "
-            "This may result in reporting modified episode lengths and rewards, if other wrappers happen to modify these. "
-            "Consider wrapping environment first with ``Monitor`` wrapper.",
-            UserWarning,
-        )
+    #if not is_monitor_wrapped and warn:
+    #    warnings.warn(
+    #        "Evaluation environment is not wrapped with a ``Monitor`` wrapper. "
+    #        "This may result in reporting modified episode lengths and rewards, if other wrappers happen to modify these. "
+    #        "Consider wrapping environment first with ``Monitor`` wrapper.",
+    #        UserWarning,
+    #    )
 
     n_envs = env.num_envs
     episode_rewards = []
@@ -70,7 +70,7 @@ def evaluate_policy(
 
                 if callback is not None:
                     callback(locals(), globals())
-
+                
                 if dones[i] or (max_ep_length is not None and current_lengths[i] == max_ep_length):
                     if is_monitor_wrapped:
                         # Atari wrapper can send a "done" signal when

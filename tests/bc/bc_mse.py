@@ -21,7 +21,7 @@ buff = OfflineBuffer(
     observation_space=env_train.observation_space,
     action_space=env_train.action_space,
 )
-buff = buff.load(path='../data/offline_buffer.pkl')
+buff = buff.load(path='../data/buffer_swimmer.pkl')
 #print(buff.observations[0][0])
 
 # Make BC

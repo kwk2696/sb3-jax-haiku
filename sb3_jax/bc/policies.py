@@ -24,7 +24,7 @@ from sb3_jax.common.jax_layers import (
     FlattenExtractor,
     MlpExtractor,
 )
-from sb3_jax.common.policies import BasePolicy
+from sb3_jax.common.policies import BasePolicy, register_policy
 from sb3_jax.common.type_aliases import Schedule
 from sb3_jax.common.utils import is_vectorized_observation, obs_as_jnp, get_dummy_obs
 from sb3_jax.common.norm_layers import BaseNormLayer
@@ -61,6 +61,7 @@ class BCPolicy(BasePolicy):
             normalization_class=normalization_class,
             normalization_kwargs=normalization_kwargs,
             squash_output=squash_output,
+            seed=seed,
         )
          
         if net_arch is None:
@@ -136,7 +137,7 @@ class BCPolicy(BasePolicy):
         self.optimizer_state = self.optimizer.init(self.params)
     
     def forward(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
-        action, _ =self._predict(observation, deterministic=deterministic)
+        action, _ = self._predict(observation, deterministic=deterministic)
         return action
 
     @partial(jax.jit, static_argnums=0)
@@ -165,3 +166,5 @@ class BCPolicy(BasePolicy):
         """Load model from path."""
 
 MlpPolicy = BCPolicy
+
+register_policy("MlpPolicy", BCPolicy)
