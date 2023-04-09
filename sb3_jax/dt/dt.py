@@ -31,7 +31,7 @@ class DT(OfflineAlgorithm):
         wandb_log: Optional[str] = None,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
-        seed: Optional[int] = None,
+        seed: Optional[int] = 1,
         _init_setup_model: bool = True,
     ):
         super(DT, self).__init__(

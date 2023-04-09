@@ -33,6 +33,7 @@ bc = BC(
     batch_size=64,
     loss_type='mse',
     verbose=1,
+    seed=777,
     policy_kwargs=dict(
         net_arch=[64, 64],
         normalization_class=RunningNormLayer,

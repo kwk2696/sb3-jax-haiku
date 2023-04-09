@@ -24,12 +24,13 @@ from sb3_jax.common.distributions import (
 from sb3_jax.common.preprocessing import get_action_dim, is_image_space, maybe_transpose, preprocess_obs
 from sb3_jax.common.jax_layers import (
     init_weights,
+    create_mlp,
     BaseFeaturesExtractor,
     FlattenExtractor,
     MlpExtractor,
 )
 from sb3_jax.common.type_aliases import Schedule
-from sb3_jax.common.utils import is_vectorized_observation, obs_as_jnp, get_dummy_obs
+from sb3_jax.common.utils import is_vectorized_observation, obs_as_jnp, get_dummy_obs, get_dummy_act
 from sb3_jax.common.norm_layers import BaseNormLayer
 
 
@@ -78,6 +79,7 @@ class BaseModel(ABC):
         self.normalization_layer = None
 
         self.seed = seed
+        print(f"Seeding {self.seed}")
         self.rng = hk.PRNGSequence(seed) # Random seed
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
@@ -245,6 +247,7 @@ class ActorCriticPolicy(BasePolicy):
             normalization_class=normalization_class,
             normalization_kwargs=normalization_kwargs,
             squash_output=squash_output,
+            seed=seed,
         )
 
         # Default network architecture, from stable-baselines
@@ -391,12 +394,49 @@ class ContinuousCritic(BaseModel):
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu,
         normalize_images: bool = True,
         n_critics: int = 2,
+        share_features_extractor: bool = True,
     ):
         super().__init__(
             observation_space,
             action_space,
             normalize_images=normalize_images,
         )
+        
+        self.net_arch = net_arch
+        self.activation_fn = activation_fn
+        self.n_critics = n_critics
+
+        self._build()
+
+    def _build_critic(self, net_arch: List[int]) -> hk.Module:
+        return create_mlp(
+            output_dim=1,
+            net_arch=net_arch,
+            activation_fn=self.activation_fn,
+            squash_output=False,
+        )
+            
+    def _build(self,) -> None:
+        """Create critics."""
+        def fn_critic(observation: jnp.ndarray, action: jnp.ndarray):
+            q_networks = []
+            for idx in range(self.n_critics):
+                q_net = self._build_critic(self.net_arch)
+                q_networks.append(q_net)
+            return [q_net(observation, action) for q_net in q_networks] 
+        
+        params, self.critic = hk.without_apply_rng(hk.transform(fn_critic))
+        self.params = params(next(self.rng), get_dummy_obs(self.observation_space), get_dummy_act(self.action_space))
+    
+    def forward(self, observation: jnp.ndarray, actions: jnp.ndarray) -> jnp.ndarray:
+        return self._critic(observation, actions, self.params)
+    
+    def q1_forward(self, observation: jnp.ndarray, actions: jnp.ndarray) -> jnp.ndarray:
+        return self._critic(observation, actions, self.params)[0]
+
+    @partial(jax.jit, static_argnums=0)
+    def _critic(self, observation: jnp.ndarray, actions: jnp.ndarray, params: hk.Params) -> jnp.ndarray:
+        return tuple(qval for qval in self.critic(params, observation, actions))
 
 
 _policy_registry = dict() # type: Dict[Type[BasePolicy], Dict[str, Type[BasePolicy]]]

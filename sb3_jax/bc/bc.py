@@ -34,7 +34,7 @@ class BC(OfflineAlgorithm):
         wandb_log: Optional[str] = None,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
-        seed: Optional[int] = None,
+        seed: Optional[int] = 1,
         _init_setup_model: bool = True,
     ): 
         assert loss_type in ['mse', 'neglogp'], "Loss type should be one of mse and neglogp" 

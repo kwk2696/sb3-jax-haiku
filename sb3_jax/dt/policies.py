@@ -228,6 +228,7 @@ class DTPolicy(BasePolicy):
             normalization_class=normalization_class,
             normalization_kwargs=normalization_kwargs,
             squash_output=squash_output,
+            seed=seed,
         )
 
         self.num_tasks = num_tasks
@@ -466,6 +467,7 @@ class PDTPolicy(BasePolicy):
             normalization_class=normalization_class,
             normalization_kwargs=normalization_kwargs,
             squash_output=squash_output,
+            seed=seed,
         )
 
         self._pretrained_policy = pretrained_policy

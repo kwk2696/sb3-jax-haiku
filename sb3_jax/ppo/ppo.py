@@ -42,7 +42,7 @@ class PPO(OnPolicyAlgorithm):
         create_eval_env: bool = False,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
-        seed: Optional[int] = None,
+        seed: Optional[int] = 1,
         _init_setup_model: bool = True,
     ):
 

@@ -49,7 +49,7 @@ class BCPolicy(BasePolicy):
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         normalization_class: Type[BaseNormLayer] = None,
         normalization_kwargs: Optional[Dict[str, Any]] = None,
-        seed: int = 1, 
+        seed: int = 1,
     ):
         super(BCPolicy, self).__init__(
             observation_space,
