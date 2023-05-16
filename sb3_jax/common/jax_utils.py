@@ -53,7 +53,7 @@ def jit_optimize_with_state(
     return optimizer_state, params, new_state, loss, aux
 
 
-def detach(x: jnp.ndarray):
+def stop_grad(x: jnp.ndarray):
     return jax.lax.stop_gradient(x)
 
 
@@ -83,8 +83,7 @@ def polyak_update(
     params: hk.Params,
     params_target: hk.Params,
     tau: float,
-
-) -> None:
+) -> hk.Params:
     """Perform a Polyak average update on target_params using params."""
     return jax.tree_multimap(lambda t, s: (1 - tau) * t + tau * s, params_target, params)
 
@@ -103,4 +102,6 @@ def warmup_scheduler(init_value: float, warmup_steps: int) -> Schedule:
     def schedule(count):
         return jnp.minimum((count + 1)/warmup_steps, 1.) * init_value
     return schedule
-       
+
+def jax_print(x: jnp.ndarray):
+    jax.debug.print("{x}", x=x)

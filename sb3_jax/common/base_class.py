@@ -239,7 +239,7 @@ class BaseAlgorithm(ABC):
 
     
     def _update_learning_rate(self) -> None:
-        raise NotImplementedError
+        self.logger.record("train/learning_rate", self.lr_schedule(self._current_progress_remaining))
 
     def _excluded_save_params(self) -> List[str]:
         """Returns the names of the parameters that should be excluded from being saved by pickling."""

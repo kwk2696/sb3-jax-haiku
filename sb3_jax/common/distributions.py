@@ -37,20 +37,15 @@ class DiagGaussianDistribution(Distribution):
         self, 
         action_dim: int, 
         log_std_init: float = 0.0,
-        state_std: bool = False,
     ):
         super(DiagGaussianDistribution, self).__init__()
         self.action_dim = action_dim
         self.log_std_init = log_std_init
-        self.state_std = state_std
 
     def __call__(self, latent_pi: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """ :return: Mean and log std of actor."""
-        mean_actions = hk.Linear(self.action_dim, **init_weights())(latent_pi)
-        if self.state_std: 
-            log_std = hk.Linear(self.action_dim, **init_weights(gain=0.01))(latent_pi) 
-        else: 
-            log_std = hk.get_parameter("log_std", (self.action_dim,), init=hk.initializers.Constant(self.log_std_init))
+        mean_actions = hk.Linear(self.action_dim, name="mu", **init_weights())(latent_pi)
+        log_std = hk.get_parameter("log_std", (self.action_dim,), init=hk.initializers.Constant(self.log_std_init))
         return mean_actions, log_std
 
 
@@ -60,19 +55,14 @@ class SquashedDiagGaussianDistribution(Distribution):
         self,
         action_dim: int,
         log_std_init: float = 0.0,
-        state_std: bool = False,
     ):
         super(SquashedDiagGaussianDistribution, self).__init__()
         self.action_dim = action_dim
         self.log_std_init = log_std_init
-        self.state_std = state_std
         
     def __call__(self, latent_pi: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        mean_actions = hk.Linear(self.action_dim, **init_weights())(latent_pi)
-        if self.state_std: 
-            log_std = hk.Linear(self.action_dim, **init_weights(gain=0.01))(latent_pi) 
-        else: 
-            log_std = hk.get_parameter("log_std", (self.action_dim,), init=hk.initializers.Constant(self.log_std_init))
+        mean_actions = hk.Linear(self.action_dim, name="mu", **init_weights())(latent_pi)
+        log_std = hk.Linear(self.action_dim, name="log_std", **init_weights())(latent_pi) 
         log_std = jnp.clip(log_std, LOG_STD_MIN, LOG_STD_MAX)
         return mean_actions, log_std
 
@@ -93,6 +83,9 @@ class CategoricalDistribution(Distribution):
         mean_actions = jnp.exp(action_logits)
         mean_acitons = nn.softmax(mean_actions, axis=1)
         return mean_actions, action_logits
+
+
+# ============================================================= #
 
 
 class DistributionFn(ABC): 
@@ -143,11 +136,20 @@ class DiagGaussianDistributionFn(DistributionFn):
     
     @partial(jax.jit, static_argnums=0)
     def log_prob(self, actions: jnp.ndarray, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
+        # log probability of Normal distribution
         action_std = jnp.exp(log_std)  
         noise = (actions - mean_actions) / action_std
         log_prob = -0.5 * (jnp.square(noise) + 2 * log_std + jnp.log(2 * math.pi))
+        # sum up for individual dimensions
         log_prob = sum_independent_dims(log_prob, 1) if len(log_prob.shape) > 1 else sum_independent_dims(log_prob, None)
         return log_prob
+    
+    @partial(jax.jit, static_argnums=0)
+    def log_prob_from_params(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """Compute the log prob of taking an action given the distribution parameters."""
+        actions = self.sample(mean_actions, log_std, key) 
+        log_prob = self.log_prob(actions, mean_actions, log_std)
+        return actions, log_prob
 
     @partial(jax.jit, static_argnums=0)
     def entropy(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
@@ -160,7 +162,8 @@ class DiagGaussianDistributionFn(DistributionFn):
 class SquashedDiagGaussianDistributionFn(DiagGaussianDistributionFn):
     def __init__(self):
         super(SquashedDiagGaussianDistributionFn, self).__init__()
-    
+        self.epsilon = 1e-6
+
     @partial(jax.jit, static_argnums=0)
     def sample(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: jnp.ndarray) -> jnp.ndarray: 
         gaussian_actions = super().sample(mean_actions, log_std, key)
@@ -168,19 +171,37 @@ class SquashedDiagGaussianDistributionFn(DiagGaussianDistributionFn):
         return nn.tanh(gaussian_actions)
 
     @partial(jax.jit, static_argnums=0)
+    def sample_with(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: jnp.ndarray) -> jnp.ndarray:
+        # For reteriveing both tanh action & gaussian action
+        gaussian_actions = super().sample(mean_actions, log_std, key)
+        # Squash the output
+        return nn.tanh(gaussian_actions), gaussian_actions
+
+    @partial(jax.jit, static_argnums=0)
     def mode(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
         gaussian_actions = super().mode(mean_actions, log_std)
+        # Squash the output
         return nn.tanh(gaussian_actions)
 
     @partial(jax.jit, static_argnums=0)
-    def log_prob(self, actions: jnp.ndarray, gaussian_actions: jnp.ndarray, log_std: jnp.ndarray): 
-        log_prob = super(SquashedDiagGaussianDistributionFn, self).log_prob(actions, gaussian_actions, log_std)
+    def log_prob(self, actions: jnp.ndarray, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
+        # Inverse tanh; find out TanhBijector function is potentially not safe
+        gaussian_actions = actions #TanhBijector.inverse(actions)
+
+        log_prob = super().log_prob(gaussian_actions, mean_actions, log_std)
+        # Squash correction, comes from the fact that tanh is bijective and differentiable (at Appendix. C)
+        log_prob -= jnp.sum(jnp.log(1 - nn.tanh(actions)**2 + self.epsilon), axis=1)
         return log_prob
     
     @partial(jax.jit, static_argnums=0)
     def entropy(self) -> jnp.ndarray:
         return None
 
+    @partial(jax.jit, static_argnums=0)
+    def log_prob_from_params(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        actions, gaussian_actions = self.sample_with(mean_actions, log_std, key)
+        log_prob = self.log_prob(gaussian_actions, mean_actions, log_std)
+        return actions, log_prob
 
 
 class CategoricalDistributionFn(DistributionFn):
@@ -209,6 +230,31 @@ class CategoricalDistributionFn(DistributionFn):
     def entropy(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
         p_log_p = mean_actions * log_std
         return -p_log_p.sum(-1)
+
+
+# ======================================= #
+
+
+class TanhBijector(object):
+    def __init__(self, epsilon: float = 1e-6):
+        super(TanhBijector, self).__init__()
+        self.epsilon = epsilon
+
+    @staticmethod
+    def forward(x: jnp.ndarray) -> jnp.ndarray:
+        return nn.tanh(x)
+    
+    @staticmethod
+    def atanh(x: jnp.ndarray) -> jnp.ndarray:
+        """ 
+        Inverse Tanh 
+        0.5 * log((1 + x) / (1 - x))    
+        """
+        return 0.5 * (jnp.log1p(x) - jnp.log1p(-x))
+
+    @staticmethod
+    def inverse(y: jnp.ndarray) -> jnp.ndarray:
+        return TanhBijector.atanh(y.clip(min=-1.0 + 1e-6, max=1.0 - 1e-6))
 
 
 def make_proba_distribution(

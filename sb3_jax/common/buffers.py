@@ -234,6 +234,7 @@ class ReplayBuffer(BaseBuffer):
         action_space: spaces.Space,
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
+        handle_timeout_termination: bool = True,
     ):
         super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, n_envs=n_envs)
 
@@ -258,6 +259,9 @@ class ReplayBuffer(BaseBuffer):
 
         self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
         self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        # Handle timeout termination properly if needed
+        self.handle_timeout_termination = handle_timeout_termination
+        self.timeouts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
 
         if psutil is not None:
             total_memory_usage = self.observations.nbytes + self.actions.nbytes + self.rewards.nbytes + self.dones.nbytes
@@ -306,6 +310,9 @@ class ReplayBuffer(BaseBuffer):
         self.rewards[self.pos] = np.array(reward).copy()
         self.dones[self.pos] = np.array(done).copy()
 
+        if self.handle_timeout_termination:
+            self.timeouts[self.pos] = np.array([info.get("TimeLimit.truncated", False) for info in infos])
+
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
@@ -336,7 +343,9 @@ class ReplayBuffer(BaseBuffer):
             self._normalize_obs(self.observations[batch_inds, env_indices, :], env),
             self.actions[batch_inds, env_indices, :],
             next_obs,
-            self.dones[batch_inds, env_indices].reshape(-1, 1),
+            # Only use dones taht are not due to timeouts
+            # deactivated by default (timeouts is initialized as an array of False
+            (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1),
             self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env),
         )
         return ReplayBufferSamples(*tuple(map(self.to_jnp, data)))

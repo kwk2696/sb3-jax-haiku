@@ -100,7 +100,7 @@ class BaseModel(ABC):
         """Load model from path."""
     
     def preprocess(self, observation: jnp.ndarray, training: bool = False) -> jnp.ndarray:
-        observation =  preprocess_obs(observation, self.observation_space, self.normalize_images)
+        observation = preprocess_obs(observation, self.observation_space, self.normalize_images)
         if self.normalization_class is not None:
             observation = self.normalization_layer(observation, training=training)  
         return observation
@@ -418,25 +418,36 @@ class ContinuousCritic(BaseModel):
             
     def _build(self,) -> None:
         """Create critics."""
-        def fn_critic(observation: jnp.ndarray, action: jnp.ndarray):
-            q_networks = []
-            for idx in range(self.n_critics):
-                q_net = self._build_critic(self.net_arch)
-                q_networks.append(q_net)
-            return [q_net(observation, action) for q_net in q_networks] 
-        
-        params, self.critic = hk.without_apply_rng(hk.transform(fn_critic))
-        self.params = params(next(self.rng), get_dummy_obs(self.observation_space), get_dummy_act(self.action_space))
+        """TODO: extend to N number of critics."""
+        def fn_critic():
+            #q_networks = []
+            #for idx in range(self.n_critics):
+            #q_net = self._build_critic(self.net_arch)
+            #    q_networks.append(q_net) 
+            #x = jnp.concatenate([observation, action], axis=1)
+            #return [q_net(x) for q_net in q_networks] 
+            q1 = self._build_critic(self.net_arch)
+            q2 = self._build_critic(self.net_arch)
+
+            def init(x: jnp.ndarray):
+                return q1(x), q2(x)
+            return init, (q1, q2) 
+
+        params, (self.q1, self.q2) = hk.without_apply_rng(hk.multi_transform(fn_critic))
+        self.params = params(next(self.rng), jnp.concatenate([get_dummy_obs(self.observation_space), get_dummy_act(self.action_space)], axis=1))
     
     def forward(self, observation: jnp.ndarray, actions: jnp.ndarray) -> jnp.ndarray:
+        # observation is should be preprocessed 
         return self._critic(observation, actions, self.params)
     
     def q1_forward(self, observation: jnp.ndarray, actions: jnp.ndarray) -> jnp.ndarray:
+        # observation is should be preprocessed 
         return self._critic(observation, actions, self.params)[0]
 
     @partial(jax.jit, static_argnums=0)
     def _critic(self, observation: jnp.ndarray, actions: jnp.ndarray, params: hk.Params) -> jnp.ndarray:
-        return tuple(qval for qval in self.critic(params, observation, actions))
+        x = jnp.concatenate([observation, actions], axis=1)
+        return self.q1(params, x), self.q2(params, x)
 
 
 _policy_registry = dict() # type: Dict[Type[BasePolicy], Dict[str, Type[BasePolicy]]]

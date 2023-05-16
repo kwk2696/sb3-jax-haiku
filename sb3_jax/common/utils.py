@@ -11,6 +11,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from jax import nn
+import haiku as hk
 
 # Check if tensorboard is available for pytorch
 try:
@@ -318,6 +319,15 @@ def zip_strict(*iterables: Iterable) -> Iterable:
             raise ValueError("Iterables have different lengths")
         yield combo
 
+
+def polyak_update(
+    params: hk.Params,
+    target_params: hk.Params,
+    tau: float,
+) -> hk.Params: 
+    return jax.tree_util.tree_map(
+        lambda p, tp: p * tau + tp * (1 - tau), params, target_params
+    )
 
 def should_collect_more_steps(
     train_freq: TrainFreq,

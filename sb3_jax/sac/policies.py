@@ -1,5 +1,6 @@
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, Callable
+from copy import deepcopy
 
 import gym
 import jax
@@ -10,7 +11,7 @@ import jax.numpy as jnp
 from jax import nn
 
 from sb3_jax.common.distributions import SquashedDiagGaussianDistributionFn, SquashedDiagGaussianDistribution
-from sb3_jax.common.policies import BasePolicy
+from sb3_jax.common.policies import BasePolicy, ContinuousCritic, register_policy
 from sb3_jax.common.preprocessing import get_action_dim, is_image_space, maybe_transpose, preprocess_obs
 from sb3_jax.common.jax_layers import (
     init_weights,
@@ -60,11 +61,14 @@ class Actor(BasePolicy):
         self.full_std = full_std
         self.clip_mean = clip_mean
         
+        actor_kwargs = dict()
         if self.use_sde:
             raise NotImplementedError("sde arch is not implemented in jax-haiku yet") 
         else: 
             self.action_dist_class, self.action_dist_fn = SquashedDiagGaussianDistribution, SquashedDiagGaussianDistributionFn()
-        
+            actor_kwargs.update({
+                "log_std_init": log_std_init,
+            })
         self._build(dict())
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
@@ -111,22 +115,31 @@ class Actor(BasePolicy):
         self.params = params(next(self.rng), get_dummy_obs(self.observation_space))    
 
     def forward(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
+        observation = self.preprocess(observation)
         mean_actions, log_std = self._actor(observation, self.params)
         actions = self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
         return actions
-
-    def action_log_prob(self, observation: jnp.ndarray, actions: jnp.ndarray = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        mean_actions, log_std = self._actor(observation, self.params)
-        if actions is None:
-            actions = self.action_dist_fn.get_actions(mean_actions, log_std, False, next(self.rng))
-        return self.action_dist_fn.log_prob(actions, mean_actions, log_std)
+    
+    @partial(jax.jit, static_argnums=0)
+    def action_log_prob(
+        self, 
+        observation: jnp.ndarray, 
+        params: jnp.ndarray = None,
+        rng=None
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """ return actions and corresponding log prob"""
+        mean_actions, log_std = self._actor(observation, params)
+        return self.action_dist_fn.log_prob_from_params(mean_actions, log_std, rng)
             
     @partial(jax.jit, static_argnums=0)
-    def _actor(self, observation: jnp.ndarray, params: hk.Params) -> jnp.ndarray:
+    def _actor(self, observation: jnp.ndarray, params: hk.Params) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """ return: mean, log_std """
         return self.actor(params, observation)
         
     def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
-        return self.forward(observation, deterministic), None
+        observation = self.preprocess(observation)
+        mean_actions, log_std = self._actor(observation, self.params)
+        return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng)), None
 
 
 class SACPolicy(BasePolicy): 
@@ -163,6 +176,7 @@ class SACPolicy(BasePolicy):
             normalization_class=normalization_class,
             normalization_kwargs=normalization_kwargs,
             squash_output=True,
+            seed=seed,
         )
 
         if net_arch is None:
@@ -174,7 +188,7 @@ class SACPolicy(BasePolicy):
         self.net_args = {
             "observation_space": self.observation_space,
             "action_space": self.action_space,
-            "net_arch": net_arch,
+            "net_arch": actor_arch,
             "activation_fn": self.activation_fn,
             "normalize_images": normalize_images,
         }
@@ -200,7 +214,7 @@ class SACPolicy(BasePolicy):
         )
 
         self.actor, self.actor_target = None, None 
-        self.critic, self.critic = None, None
+        self.critic, self.critic_target = None, None
         self.share_features_extractor = share_features_extractor
 
         self._build(lr_schedule)
@@ -233,10 +247,31 @@ class SACPolicy(BasePolicy):
 
         # make actor
         self.actor = self.make_actor()
-        self.actor.optimizer = self.optimizer_class(self.actor.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
+        self.actor.optimizer = self.optimizer_class(learning_rate=lr_schedule, **self.optimizer_kwargs) 
+        self.actor.optimizer_state = self.actor.optimizer.init(self.actor.params)
 
         # make critic
+        self.critic = self.make_critic()
+        self.critic.optimizer = self.optimizer_class(learning_rate=lr_schedule, **self.optimizer_kwargs)
+        self.critic.optimizer_state = self.critic.optimizer.init(self.critic.params)
+        
+        # make critic target
+        self.critic_target = self.make_critic()
+        self.critic_target.params = deepcopy(self.critic.params)
 
-    
     def make_actor(self,) -> Actor:
         return Actor(**self.actor_kwargs)
+
+    def make_critic(self,) -> ContinuousCritic:
+        return ContinuousCritic(**self.critic_kwargs)
+    
+    def forward(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
+        action, _ = self._predict(observtion, deterministic=deterministic)
+        return action
+
+    def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
+        return self.actor._predict(observation, deterministic)
+
+MlpPolicy = SACPolicy
+
+register_policy("MlpPolicy", SACPolicy)
