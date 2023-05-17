@@ -31,6 +31,7 @@ from sb3_jax.common.jax_layers import (
 )
 from sb3_jax.common.type_aliases import Schedule
 from sb3_jax.common.utils import is_vectorized_observation, obs_as_jnp, get_dummy_obs, get_dummy_act
+from sb3_jax.common.jax_utils import jax_print
 from sb3_jax.common.norm_layers import BaseNormLayer
 
 
@@ -418,22 +419,16 @@ class ContinuousCritic(BaseModel):
             
     def _build(self,) -> None:
         """Create critics."""
-        """TODO: extend to N number of critics."""
         def fn_critic():
-            #q_networks = []
-            #for idx in range(self.n_critics):
-            #q_net = self._build_critic(self.net_arch)
-            #    q_networks.append(q_net) 
-            #x = jnp.concatenate([observation, action], axis=1)
-            #return [q_net(x) for q_net in q_networks] 
-            q1 = self._build_critic(self.net_arch)
-            q2 = self._build_critic(self.net_arch)
+            q_networks = []
+            for idx in range(self.n_critics):
+                q_networks.append(self._build_critic(self.net_arch))
 
-            def init(x: jnp.ndarray):
-                return q1(x), q2(x)
-            return init, (q1, q2) 
+            def init(qvalue_input: jnp.ndarray):
+                return tuple(q_net(qvalue_input) for q_net in q_networks)
+            return init, q_networks 
 
-        params, (self.q1, self.q2) = hk.without_apply_rng(hk.multi_transform(fn_critic))
+        params, self.q_networks = hk.without_apply_rng(hk.multi_transform(fn_critic))
         self.params = params(next(self.rng), jnp.concatenate([get_dummy_obs(self.observation_space), get_dummy_act(self.action_space)], axis=1))
     
     def forward(self, observation: jnp.ndarray, actions: jnp.ndarray) -> jnp.ndarray:
@@ -446,8 +441,8 @@ class ContinuousCritic(BaseModel):
 
     @partial(jax.jit, static_argnums=0)
     def _critic(self, observation: jnp.ndarray, actions: jnp.ndarray, params: hk.Params) -> jnp.ndarray:
-        x = jnp.concatenate([observation, actions], axis=1)
-        return self.q1(params, x), self.q2(params, x)
+        qvalue_input = jnp.concatenate([observation, actions], axis=1)
+        return tuple(q_net(params, qvalue_input) for q_net in self.q_networks) 
 
 
 _policy_registry = dict() # type: Dict[Type[BasePolicy], Dict[str, Type[BasePolicy]]]

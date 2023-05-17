@@ -54,6 +54,7 @@ class SAC(OffPolicyAlgorithm):
         sde_sample_freq: int = -1,
         use_sde_at_warmup: bool = False,
         tensorboard_log : Optional[str] = None,
+        wandb_log: Optional[str] = None,
         create_eval_env: bool = False,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
@@ -77,6 +78,7 @@ class SAC(OffPolicyAlgorithm):
             replay_buffer_kwargs=replay_buffer_kwargs,
             policy_kwargs=policy_kwargs,
             tensorboard_log=tensorboard_log,
+            wandb_log=wandb_log,
             verbose=verbose,
             create_eval_env=create_eval_env,
             seed=seed,
@@ -213,6 +215,16 @@ class SAC(OffPolicyAlgorithm):
         if len(ent_coef_losses) > 0:
             self.logger.record("train/ent_coef_loss", np.mean(ent_coef_losses))
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
+        
+        if self.wandb_log is not None:
+            wandb_log({
+                "train/n_updates", self._n_updates,
+                "train/actor_loss", np.mean(actor_losses),
+                "train/critic_loss", np.mean(critic_losses),
+                "train/ent_coef_loss", np.mean(ent_coef_losses),
+                "train/ent_coef", np.mean(ent_coefs),
+                "train/log_prob", actor_info['log_prob'].mean()
+            })
 
     @partial(jax.jit, static_argnums=0)
     def _loss_ent_coef(
@@ -245,8 +257,7 @@ class SAC(OffPolicyAlgorithm):
         rng=None,
     ):
         next_actions, next_log_prob = self.actor.action_log_prob(next_observations, actor_params, rng=rng)
-        q1, q2 = self.critic_target._critic(next_observations, next_actions, critic_target_params)
-        next_q_values = jnp.concatenate([q1, q2], axis=1)
+        next_q_values = jnp.concatenate(self.critic_target._critic(next_observations, next_actions, critic_target_params), axis=1)
         next_q_values = jnp.min(next_q_values, axis=1, keepdims=True)
         log_ent_coef = self._log_ent_coef(ent_coef_params)
         # add entropy term
@@ -265,12 +276,11 @@ class SAC(OffPolicyAlgorithm):
     ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
         
         # compute current Q-value 
-        q1, q2 = self.critic._critic(observations, actions, params)
-        critic_loss = 0.5 * (jnp.square(q1 - target_q_values).mean() + jnp.square(q2 - target_q_values).mean())
+        current_q_values = self.critic._critic(observations, actions, params)
+        critic_loss = 0.5 * jnp.sum(jnp.array([jnp.square(current_q - target_q_values).mean() for current_q in current_q_values]))
         
         info = {
             'critic_loss': critic_loss,
-            'current_q_values': q1,
         }
         return critic_loss, info
     
@@ -285,13 +295,12 @@ class SAC(OffPolicyAlgorithm):
     ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
 
         # sample action
-        actions, log_prob = self.actor.action_log_prob(observations, params, rng=rng)
+        actions_pi, log_prob = self.actor.action_log_prob(observations, params, rng=rng)
         log_prob = log_prob.reshape(-1, 1)
         
         # compuate q value
-        q1, q2 = self.critic._critic(observations, actions, critic_params)
-        min_qf_pi = jnp.concatenate([q1, q2], axis=1)
-        min_qf_pi = jnp.min(min_qf_pi, axis=1, keepdims=True)
+        q_values_pi = jnp.concatenate(self.critic._critic(observations, actions_pi, critic_params), axis=1)
+        min_qf_pi = jnp.min(q_values_pi, axis=1, keepdims=True)
 
         # get temperature
         log_ent_coef = jax.lax.stop_gradient(
