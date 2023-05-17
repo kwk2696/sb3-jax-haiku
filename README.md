@@ -36,3 +36,4 @@ Example codes are available in ``tests`` directory.
 
 
 ## Currently Working On ...
+TD3, Generative modeling for RL (e.g. diffuser)
