@@ -396,11 +396,13 @@ class ContinuousCritic(BaseModel):
         normalize_images: bool = True,
         n_critics: int = 2,
         share_features_extractor: bool = True,
+        seed: int = 1,
     ):
         super().__init__(
             observation_space,
             action_space,
             normalize_images=normalize_images,
+            seed=seed,
         )
         
         self.net_arch = net_arch

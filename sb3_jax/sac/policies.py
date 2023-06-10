@@ -115,7 +115,6 @@ class Actor(BasePolicy):
         self.params = params(next(self.rng), get_dummy_obs(self.observation_space))    
 
     def forward(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
-        observation = self.preprocess(observation)
         mean_actions, log_std = self._actor(observation, self.params)
         actions = self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng))
         return actions
@@ -137,7 +136,6 @@ class Actor(BasePolicy):
         return self.actor(params, observation)
         
     def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
-        observation = self.preprocess(observation)
         mean_actions, log_std = self._actor(observation, self.params)
         return self.action_dist_fn.get_actions(mean_actions, log_std, deterministic, next(self.rng)), None
 
@@ -266,10 +264,12 @@ class SACPolicy(BasePolicy):
         return ContinuousCritic(**self.critic_kwargs)
     
     def forward(self, observation: jnp.ndarray, deterministic: bool = False) -> jnp.ndarray:
+        observation = self.preprocess(observation)
         action, _ = self._predict(observtion, deterministic=deterministic)
         return action
 
     def _predict(self, observation: jnp.ndarray, deterministic: bool = False) -> Tuple[jnp.ndarray, Optional[Dict[str, Any]]]:
+        observation = self.preprocess(observation)
         return self.actor._predict(observation, deterministic)
 
 MlpPolicy = SACPolicy

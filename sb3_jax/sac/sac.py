@@ -142,10 +142,10 @@ class SAC(OffPolicyAlgorithm):
         for gradient_step in range(gradient_steps):
             # Sample replay buffer
             replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)
-            observations = self.actor.preprocess(replay_data.observations, training=True)
+            observations = self.policy.preprocess(replay_data.observations, training=True)
             actions = replay_data.actions
             rewards = replay_data.rewards
-            next_observations = self.actor.preprocess(replay_data.next_observations, training=True)
+            next_observations = self.policy.preprocess(replay_data.next_observations, training=True)
             dones = replay_data.dones
 
             # We need to sample because `log_std` may have changed between two gradient steps

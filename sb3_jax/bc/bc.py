@@ -196,7 +196,7 @@ class OnlineBC(OffPolicyAlgorithm):
         self,
         policy: Union[str, Type[BCPolicy]],
         env: Union[GymEnv, str],
-        replay_buffer: Type[BaseBuffer] = ReplayBuffer,
+        replay_buffer: Type[BaseBuffer] = None,
         policy_base: Type[BasePolicy] = BCPolicy, 
         buffer_size: int = 1_000_000, # 1e6
         learning_starts: int = 100,
@@ -317,7 +317,7 @@ class OnlineBC(OffPolicyAlgorithm):
             neglogp = -log_prob
             loss = neglogp + ent_loss
         elif self.loss_type == 'mse':
-            mean_actions = self.policy._actor(observations, params)
+            mean_actions, _ = self.policy._actor(observations, params)
             neglogp, entropy = 0., 0.
             loss = jnp.mean(jnp.square(mean_actions - actions)) 
 

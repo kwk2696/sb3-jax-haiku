@@ -3,6 +3,7 @@ import time
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+import wandb
 import gym
 import jax
 import numpy as np
@@ -263,7 +264,6 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         # Rescale the action from [low, high] to [-1, 1]
         if isinstance(self.action_space, gym.spaces.Box):
             scaled_action = self.policy.scale_action(unscaled_action)
-
             # Add noise to the action (improve exploration)
             if action_noise is not None:
                 scaled_action = np.clip(scaled_action + action_noise(), -1, 1)
@@ -294,6 +294,19 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             self.logger.record("rollout/success_rate", safe_mean(self.ep_success_buffer))
         # Pass the number of timesteps for tensorboard
         self.logger.dump(step=self.num_timesteps)
+        
+        # dump wandb logs
+        if self.wandb_log is not None:
+            wandb.log({"time/fps": fps})
+            if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
+                wandb.log({
+                    "rollout/ep_rew_mean": safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]),
+                    "rollout/ep_len_mean": safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]),
+                })
+            if len(self.ep_success_buffer) > 0:
+                wandb.log({
+                    "rollout/success_rate": safe_mean(self.ep_success_buffer)
+                })
 
     def _on_step(self) -> None:
         pass

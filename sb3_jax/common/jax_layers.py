@@ -61,6 +61,7 @@ class MLP(hk.Module):
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu,
         squash_output: bool = False,
         drop_output: float = None,
+        batch_norm: bool = False,
     ):
         super(MLP, self).__init__()
         self.output_dim = output_dim
@@ -68,6 +69,7 @@ class MLP(hk.Module):
         self.activation_fn = activation_fn
         self.squash_output = squash_output
         self.drop_output = drop_output
+        self.batch_norm = batch_norm 
 
     def __call__(self, x: jnp.ndarray, rng: int = None) -> jnp.ndarray:
         for i, size in enumerate(self.net_arch):
@@ -76,10 +78,12 @@ class MLP(hk.Module):
                 x = self.activation_fn(x)
                 if self.drop_output is not None:
                     x = hk.dropout(rng, self.drop_output, x)
+                if self.batch_norm:
+                    x = hk.BatchNorm(True, True, 0.9)(x, True)
         
         if self.output_dim > 0:
             x = hk.Linear(self.output_dim, **init_weights())(x)
-
+        
         if self.squash_output:
             x = nn.tanh(x)
         return x
@@ -91,8 +95,9 @@ def create_mlp(
     activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu,
     squash_output: bool = False,
     drop_output: float = None,
+    batch_norm: bool = False,
 ) -> hk.Module:
-    return MLP(output_dim, net_arch, activation_fn, squash_output, drop_output)
+    return MLP(output_dim, net_arch, activation_fn, squash_output, drop_output, batch_norm)
 
 
 def get_actor_critic_arch(net_arch: Union[List[int], Dict[str, List[int]]]) -> Tuple[List[int], List[int]]:
