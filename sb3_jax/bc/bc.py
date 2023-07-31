@@ -68,7 +68,7 @@ class BC(OfflineAlgorithm):
     def train(self, gradient_steps: int, batch_size: int = 256) -> None:
         """Update policy using samples from replay buffer."""
 
-        actor_losses, entropys, neglogps = [], [], []
+        actor_losses, entropys, neglogps, mses = [], [], [], []
         
         for gradient_step in range(gradient_steps):
             replay_data = self.replay_buffer.sample(batch_size)
@@ -91,6 +91,7 @@ class BC(OfflineAlgorithm):
             actor_losses.append(np.array(info["actor_loss"]))
             entropys.append(np.array(info["entropy"]))
             neglogps.append(np.array(info["neglogp"]))
+            mses.append(np.array(info["mse"]))
 
         self._n_updates += gradient_steps
 
@@ -98,7 +99,8 @@ class BC(OfflineAlgorithm):
         self.logger.record("train/actor_loss", np.mean(actor_losses))
         self.logger.record("train/entropy", np.mean(entropys))
         self.logger.record("train/neglogp", np.mean(neglogps))
-        
+        self.logger.record("train/mse", np.mean(mses))
+
         # wandb log
         if self.wandb_log is not None:
             wandb.log({
@@ -106,6 +108,7 @@ class BC(OfflineAlgorithm):
                 "train/actor_loss": np.mean(actor_losses),
                 "train/entropy": np.mean(entropys),
                 "train/neglogp": np.mean(neglogps),
+                "trian/mse": np.mean(mses),
             })
 
     @partial(jax.jit, static_argnums=0)
@@ -125,13 +128,16 @@ class BC(OfflineAlgorithm):
             entropy = jnp.mean(entropy)
             ent_loss = -self.ent_coef * entropy
             neglogp = -log_prob
+            mse = jnp.mean(jnp.square(mean_actions - actions))
             loss = neglogp + ent_loss
         elif self.loss_type == 'mse':
             mean_actions = self.policy._actor(observations, params)
             neglogp, entropy = 0., 0.
-            loss = jnp.mean(jnp.square(mean_actions - actions)) 
+            mse = jnp.mean(jnp.square(mean_actions - actions)) 
+            loss = mse
 
         info = {
+            'mse': mse,
             'neglogp': neglogp,
             'entropy': entropy,
             'actor_loss': loss,
