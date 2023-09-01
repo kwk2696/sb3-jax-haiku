@@ -233,8 +233,8 @@ class SACPolicy(BasePolicy):
                 optimizer_kwargs=self.optimizer_kwargs,
                 features_extractor_class=self.features_extractor_class,
                 features_extractor_kwargs=self.features_extractor_kwargs,
-                normalization_class=normalization_class,
-                normalization_kwargs=normalization_kwargs,
+                normalization_class=self.normalization_class,
+                normalization_kwargs=self.normalization_kwargs,
             )
         )
         return data
