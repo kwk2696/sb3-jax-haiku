@@ -19,6 +19,7 @@ def main(args):
     env_eval = env_util.make_vec_env('Swimmer-v3')
             
     if args.train:
+
         print_y("<< Training BC (neglogp) Model >>")
         # Load Buffer
         buff = OfflineBuffer(
@@ -27,7 +28,6 @@ def main(args):
             action_space=env_train.action_space,
         )
         buff = buff.load(path='./tests/data/offline_buffer.pkl')
-        #print(buff.observations[0][0])
 
         # Make BC
         bc = BC(

@@ -12,6 +12,7 @@ from sb3_jax.common.norm_layers import RunningNormLayer
 from sb3_jax.common.buffers import OfflineBuffer
 from sb3_jax.common.utils import print_y
 
+
 def main(args):
     env_train = env_util.make_vec_env('Swimmer-v3')
     env_train = vec_env.VecNormalize(env_train, norm_obs=False, norm_reward=False)
@@ -19,6 +20,7 @@ def main(args):
 
     if args.train:
         print_y("<< Training BC (mse) Model >>")
+
         # Load Buffer
         buff = OfflineBuffer(
             buffer_size=25_000,
@@ -26,7 +28,6 @@ def main(args):
             action_space=env_train.action_space,
         )
         buff = buff.load(path='./tests/data/offline_buffer.pkl')
-        #print(buff.observations[0][0])
 
         # Make BC
         bc = BC(
