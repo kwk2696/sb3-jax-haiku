@@ -295,17 +295,17 @@ class ActorCriticPolicy(BasePolicy):
                 activation_fn=self.activation_fn,
                 use_sde=self.use_sde,
                 log_std_init=self.log_std_init,
-                squash_output=default_none_kwargs["squash_output"],
-                full_std=default_none_kwargs["full_std"],
-                use_expln=default_none_kwargs["use_expln"],
+                # squash_output=default_none_kwargs["squash_output"],
+                # full_std=default_none_kwargs["full_std"],
+                # use_expln=default_none_kwargs["use_expln"],
                 lr_schedule=self._dummy_schedule,  # dummy lr schedule, not needed for loading policy alone
                 ortho_init=self.ortho_init,
                 optimizer_class=self.optimizer_class,
                 optimizer_kwargs=self.optimizer_kwargs,
                 features_extractor_class=self.features_extractor_class,
                 features_extractor_kwargs=self.features_extractor_kwargs,
-                normalization_class=normalization_class,
-                normalization_kwargs=normalization_kwargs,
+                normalization_class=self.normalization_class,
+                normalization_kwargs=self.normalization_kwargs,
             )
         )
         return data

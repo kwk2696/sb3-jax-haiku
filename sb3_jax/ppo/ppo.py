@@ -2,12 +2,12 @@ import warnings
 from functools import partial
 from typing import Any, Dict, Optional, Type, Union, Tuple
 
+import wandb
 import jax
 import numpy as np
 import jax.numpy as jnp
 import haiku as hk
 from gym import spaces
-
 
 from sb3_jax.common.on_policy_algorithm import OnPolicyAlgorithm 
 from sb3_jax.common.policies import ActorCriticPolicy
@@ -39,6 +39,7 @@ class PPO(OnPolicyAlgorithm):
         sde_sample_freq: int = -1,
         target_kl: Optional[float] = None,
         tensorboard_log: Optional[str] = None,
+        wandb_log: Optional[str] = None,
         create_eval_env: bool = False,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
@@ -58,8 +59,9 @@ class PPO(OnPolicyAlgorithm):
             max_grad_norm=max_grad_norm,
             use_sde=use_sde,
             sde_sample_freq=sde_sample_freq,
-            tensorboard_log=tensorboard_log,
             policy_kwargs=policy_kwargs,
+            tensorboard_log=tensorboard_log,
+            wandb_log=wandb_log,
             verbose=verbose,
             create_eval_env=create_eval_env,
             seed=seed,
@@ -71,7 +73,6 @@ class PPO(OnPolicyAlgorithm):
                 spaces.MultiBinary,
             ),
         )
-
 
         # Sanity check, otherwise it will lead to noisy gradient and NaN
         # because of the advantage normalization
@@ -180,7 +181,7 @@ class PPO(OnPolicyAlgorithm):
                 loss = np.array(np.array(info["loss"])) 
                 approx_kl_divs.append(np.array(info["approx_kl_div"]))
                 clip_fractions.append(np.array(info["clip_fraction"]))
-
+                        
             if not continue_training:
                 break
         
@@ -203,6 +204,21 @@ class PPO(OnPolicyAlgorithm):
         if self.clip_range_vf is not None:
             self.logger.record("train/clip_range_vf", clip_range_vf) 
 
+        # wandb log
+        if self.wandb_log is not None:
+            wandb.log({
+                # "train/n_updates": self._n_updates,
+                "train/entropy_loss": np.mean(entropy_losses),
+                "train/policy_gradient_loss": np.mean(pg_losses),
+                "train/value_loss": np.mean(value_losses),
+                "train/approx_kl": np.mean(approx_kl_divs),
+                "train/clip_fraction": np.mean(clip_fractions),
+                "train/loss": loss.item(),
+                "train/explained_variance": explained_var,
+                "train/clip_range": clip_range,
+                "train/clip_range_vf": clip_range_vf,
+            })
+                
     @partial(jax.jit, static_argnums=0)
     def _loss(
         self,
@@ -274,7 +290,26 @@ class PPO(OnPolicyAlgorithm):
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
     ) -> "PPO":
-
+        
+        # wandb configs
+        self.wandb_config = dict(
+            learning_rate=self.learning_rate,
+            n_steps=self.n_steps,
+            batch_size=self.batch_size,
+            n_epochs=self.n_epochs,
+            gae_lambda=self.gae_lambda,
+            clip_range=self.clip_range,
+            clip_range_vf=self.clip_range_vf,
+            normalize_advantage=self.normalize_advantage,
+            ent_coef=self.ent_coef,
+            vf_coef=self.vf_coef,
+            max_grad_norm=self.max_grad_norm,
+            use_sde=self.use_sde,
+            sde_sample_freq=self.sde_sample_freq,
+            target_kl=self.target_kl
+        )
+        self.wandb_config.update(self.policy._get_constructor_parameters())
+        
         return super(PPO, self).learn(
             total_timesteps=total_timesteps,
             callback=callback,
