@@ -23,6 +23,18 @@ from stable_baselines3.common.logger import Logger, configure
 from sb3_jax.common.type_aliases import GymEnv, Schedule, JnpDict, TrainFreq, TrainFrequencyUnit
 
 
+def print_r(*message): # red
+    print('\033[91m', *message, '\033[0m')
+
+
+def print_y(*message): # yellow
+    print('\033[93m', *message, '\033[0m')
+
+
+def print_b(*message): # blue
+    print('\033[96m', *message, '\033[0m')
+
+
 def obs_as_jnp(obs: Union[np.ndarray, Dict[Union[str, int], np.ndarray]]) -> Union[jnp.array, JnpDict]:
     """Moves the observation to the jnp."""
     if isinstance(obs, np.ndarray):

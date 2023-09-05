@@ -11,7 +11,8 @@ from sb3_jax.common.policies import BasePolicy, ActorCriticPolicy
 from sb3_jax.common.type_aliases import Schedule
 from sb3_jax.common.buffers import BaseBuffer
 from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule
- 
+
+
 class OfflineAlgorithm(BaseAlgorithm):
     """Base class for offline algorithms."""
     def __init__(

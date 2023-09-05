@@ -234,7 +234,7 @@ class ReplayBuffer(BaseBuffer):
         action_space: spaces.Space,
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
-        handle_timeout_termination: bool = True,
+        handle_timeout_termination: bool = False,
     ):
         super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, n_envs=n_envs)
 
