@@ -24,6 +24,7 @@ from sb3_jax.common.jax_layers import (
     FlattenExtractor,
     MlpExtractor,
 )
+from sb3_jax.common.jax_utils import jax_print
 from sb3_jax.common.policies import BasePolicy, register_policy
 from sb3_jax.common.type_aliases import Schedule
 from sb3_jax.common.utils import is_vectorized_observation, obs_as_jnp, get_dummy_obs

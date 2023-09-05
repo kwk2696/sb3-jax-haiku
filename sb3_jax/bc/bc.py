@@ -104,11 +104,11 @@ class BC(OfflineAlgorithm):
         # wandb log
         if self.wandb_log is not None:
             wandb.log({
-                "train/n_updates": self._n_updates,
+                # "train/n_updates": self._n_updates,
                 "train/actor_loss": np.mean(actor_losses),
                 "train/entropy": np.mean(entropys),
                 "train/neglogp": np.mean(neglogps),
-                "trian/mse": np.mean(mses),
+                "train/mse": np.mean(mses),
             })
 
     @partial(jax.jit, static_argnums=0)
@@ -119,7 +119,6 @@ class BC(OfflineAlgorithm):
         actions: jnp.ndarray,
     ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
 
-        
         if self.loss_type == 'neglogp':
             mean_actions, log_std = self.policy._actor(observations, params)
             log_prob = self.policy.action_dist_fn.log_prob(actions, mean_actions, log_std)
