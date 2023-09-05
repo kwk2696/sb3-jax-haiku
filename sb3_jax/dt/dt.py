@@ -70,6 +70,7 @@ class DT(OfflineAlgorithm):
             replay_data = self.replay_buffer.sample(batch_size)
             #end =  time.time()
             #print("buff", end - start)
+
             # TODO: do we need preprocessing the other inputs? 
             #observations = self.policy.preprocess(replay_data.observations, training=True)
             observations = replay_data.observations
@@ -110,9 +111,9 @@ class DT(OfflineAlgorithm):
         # wandb log
         if self.wandb_log is not None:
             wandb.log({
-                "train/n_updates": self._n_updates,
+                # "train/n_updates": self._n_updates,
                 "train/actor_loss": np.mean(actor_losses),
-                "train/batch_per_task": batch_size,
+                # "train/batch_per_task": batch_size,
             })
 
     @partial(jax.jit, static_argnums=0)
@@ -257,6 +258,7 @@ class PDT(OfflineAlgorithm):
             replay_data = self.replay_buffer.sample(batch_size)
             #end =  time.time()
             #print("buff", end - start)
+
             # TODO: do we need preprocessing the other inputs? 
             #observations = self.policy.preprocess(replay_data.observations, training=True)
             observations = replay_data.observations
@@ -298,9 +300,9 @@ class PDT(OfflineAlgorithm):
         # wandb log
         if self.wandb_log is not None:
             wandb.log({
-                "train/n_updates": self._n_updates,
+                # "train/n_updates": self._n_updates,
                 "train/actor_loss": np.mean(actor_losses),
-                "train/batch_per_task": batch_size,
+                # "train/batch_per_task": batch_size,
             })
 
     @partial(jax.jit, static_argnums=0)
@@ -379,11 +381,13 @@ class PDT(OfflineAlgorithm):
 
     def _save_jax_params(self) -> Dict[str, hk.Params]:
         params_dict = {}
-        params_dict['policy'] = self.policy.params 
+        params_dict['policy_params'] = self.policy.params
+        params_dict['policy_state'] = self.policy.state
         return params_dict
 
     def _load_jax_params(self, params: Dict[str, hk.Params]) -> None:
-        self.policy.params = params['policy']
+        self.policy.params = params['policy_params']
+        self.policy.state = params['policy_state']
 
     def _save_norm_layer(self, path: str) -> None:
         if self.policy.normalization_class is not None:

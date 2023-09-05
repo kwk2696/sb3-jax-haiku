@@ -1,6 +1,6 @@
 import os
-#os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'true'
-#os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
 import gym
 
 import jax
@@ -27,8 +27,8 @@ attention_mask = jnp.ones_like(input_ids)
 position_ids = jnp.broadcast_to(jnp.arange(jnp.atleast_2d(input_ids).shape[-1]), input_shape)
 
 # without_state: wrapper function ingores state in/out
-params, transformer = hk.without_state(hk.without_apply_rng(hk.transform_with_state(fn_transformer)))
-params = params(next(rng), input_ids, attention_mask, position_ids)
+_params, transformer = hk.transform_with_state(fn_transformer)
+params, state = _params(next(rng), input_ids, attention_mask, position_ids)
 
-out = transformer(params, input_ids, attention_mask, position_ids)
+out, _ = transformer(params, state, next(rng), input_ids, attention_mask, position_ids)
 print("Last hidden states:", out['last_hidden_state'])
