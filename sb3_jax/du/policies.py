@@ -1,5 +1,6 @@
 from functools import partial
 from dataclasses import dataclass
+from abc import ABC
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, Callable
 
 import gym
@@ -106,10 +107,7 @@ class DiffusionBetaScheduler:
         return beta_t
 
 
-class MLPDiffusionModel(hk.Module):
-    """
-    MLP based diffusion, this model embeds x, y, t, before input into NN with residual
-    """
+class BaseDiffusionModel(hk.Module):
     def __init__(
         self,
         embed_dim: int,
@@ -125,6 +123,15 @@ class MLPDiffusionModel(hk.Module):
         self.net_arch = net_arch
         self.activation_fn = activation_fn
 
+
+class MLPDiffusionModel(BaseDiffusionModel):
+    """
+    MLP based diffusion, this model embeds x, y, t, before input into NN with residual.
+    followed by: https://github.com/microsoft/Imitating-Human-Behaviour-w-Diffusion
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def __call__(
         self,
         y: jax.Array, # y for noise
@@ -133,13 +140,13 @@ class MLPDiffusionModel(hk.Module):
     ):
         # embeddings
         y_embed = hk.Linear(self.embed_dim, name="ye1", **init_weights())(y)
-        # TODO: How to use LayerNorm ? 
-        # y_embed = hk.LayerNorm(-1, True, True)(y_embed)
+        # NOTE: we do not use layer norm, because of the denosing chain ... (y_t keep changing) 
+        # y_embed = hk.LayerNorm(axis=-1, name="yl", create_scale=True, create_offset=True)(y_embed)
         y_embed = self.activation_fn(y_embed)
         y_embed = hk.Linear(self.embed_dim, name="ye2", **init_weights())(y_embed)
 
         x_embed = hk.Linear(self.embed_dim, name="xe1", **init_weights())(x)
-        # x_embed = hk.LayerNorm(-1, True, True)(x_embed)
+        # x_embed = hk.LayerNorm(-1, True, True, name="xl")(x_embed)
         x_embed = self.activation_fn(x_embed)
         x_embed = hk.Linear(self.embed_dim, name="xe2", **init_weights())(x_embed)
 
@@ -149,17 +156,126 @@ class MLPDiffusionModel(hk.Module):
         
         nn_input = jnp.concatenate((y_embed, x_embed, t_embed), axis=-1)
         out = hk.Linear(self.hidden_dim, name="fc1", **init_weights())(nn_input)
-        #out = hk.LayerNorm(-1, True, True)(out)
+        # out = hk.LayerNorm(-1, True, True, name="fcl1")(out)
         out = self.activation_fn(out)
         
-        for i, size in enumerate(self.net_arch[1:-1]):
+        for i, size in enumerate(self.net_arch[1:]):
             nn_input = jnp.concatenate((out/1.414, x_embed, t_embed), axis=-1)
             _out = hk.Linear(self.hidden_dim, name=f"fc{i+1}", **init_weights())(nn_input)
-            #_out = hk.LayerNorm(-1, True, True)(_out)
+            # _out = hk.LayerNorm(-1, True, True, name=f"fcl{i+1}")(_out)
             out = self.activation_fn(_out) + out/1.414 # residual connection & concat input again
 
         nn_input = jnp.concatenate((out, x_embed, t_embed), axis=-1)
         out = hk.Linear(self.noise_dim, name="fc_out", **init_weights())(nn_input)
+        return out
+
+
+class TimeSiren(hk.Module):
+    def __init__(self, embed_dim: int):
+        super().__init__()
+        self.embed_dim = embed_dim
+
+    def __call__(self, t):
+        t_embed = hk.Linear(self.embed_dim, name="te1", with_bias=False, **init_weights())(t)
+        t_embed = jnp.sin(t_embed)
+        t_embed = hk.Linear(self.embed_dim, name="te2", **init_weights())(t_embed)
+        return t_embed
+
+
+class TFBlock(hk.Module):
+    def __init__(self, embed_dim: int, n_heads: int):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.n_heads = n_heads
+        self.tf_dim = embed_dim * n_heads
+    
+    def __call__(self, x: jax.Array) -> jax.Array:
+
+        # [3, batch_size, tf_dim*3]
+        qkvs = hk.Linear(self.tf_dim*3, name="qkvs", **init_weights())(x)
+        # [3, batch_size, tf_dim]
+        qs, ks, vs = self.split_qkv(qkvs)
+        
+        # [3, batch_size, tf_dim = embed_dim * n_heads]
+        attn_a = hk.MultiHeadAttention(self.n_heads, self.embed_dim, name="attn", w_init=init_weights()['w_init'])(qs, ks, vs)
+
+        # [3, batch_size, embed_dim]
+        attn_b = hk.Linear(self.embed_dim, name="fc1", **init_weights())(attn_a)
+        attn_b = attn_b / 1.414 + x / 1.414 # residual
+        # [batch_size, embed_dim, 3]
+        attn_b = attn_b.transpose(2, 1, 0).transpose(1, 0, 2)
+        attn_b = hk.BatchNorm(True, True, 0.9, name="bn1")(attn_b, True)
+        attn_b = attn_b.transpose(1, 0 ,2) .transpose(2, 1, 0)
+
+        # [3, batch_size, embed_dim]
+        attn_c = hk.Linear(self.embed_dim*4, name="fc2", **init_weights())(attn_b)
+        attn_c = nn.gelu(attn_c)
+        attn_c = hk.Linear(self.embed_dim, name="fc3", **init_weights())(attn_c)
+        attn_c = attn_c / 1.414 + attn_b / 1.414
+        # normalize
+        attn_c = attn_c.transpose(2, 1, 0).transpose(1, 0, 2)
+        attn_c = hk.BatchNorm(True, True, 0.9, name="bn2")(attn_c, True)
+        attn_c = attn_c.transpose(1, 0, 2).transpose(2, 1, 0)
+        return attn_c
+
+    def split_qkv(self, qkv) -> Tuple[jax.Array, jax.Array, jax.Array]:
+        q = qkv[:,:,:self.tf_dim]
+        k = qkv[:,:,self.tf_dim:2*self.tf_dim]
+        v = qkv[:,:,2*self.tf_dim:]
+        return (q, k, v)
+
+
+class TFDiffusionModel(BaseDiffusionModel):
+    """
+    Transformer based diffusion, this model embeds x, y, t, befor input into transformer.
+    """
+    def __init__(self, n_heads: int, **kwargs):
+        super().__init__(**kwargs)
+        self.n_heads = n_heads
+
+    def __call__(
+        self,
+        y: jax.Array, # y for noise
+        x: jax.Array, # x for observations (conditioned)
+        t: jax.Array, # t for denoising timestep
+    ):
+        batch_size = y.shape[0]
+
+        # embeddings
+        y_embed = hk.Linear(self.embed_dim, name="ye1", **init_weights())(y)
+        y_embed = self.activation_fn(y_embed)
+        y_embed = hk.Linear(self.embed_dim, name="ye2", **init_weights())(y_embed)
+
+        x_embed = hk.Linear(self.embed_dim, name="xe1", **init_weights())(x)
+        x_embed = self.activation_fn(x_embed)
+        x_embed = hk.Linear(self.embed_dim, name="xe2", **init_weights())(x_embed)
+
+        t_embed = hk.Linear(self.embed_dim, name="te1", **init_weights())(t)
+        t_embed = jnp.sin(t_embed)
+        t_embed = hk.Linear(self.embed_dim, name="te2", **init_weights())(t_embed)
+        
+        # positional encoding
+        pos_embedder = TimeSiren(self.embed_dim)
+        # [batch_size, embed_dim]
+        y_embed += pos_embedder(jnp.zeros((batch_size, 1)) + 1.)
+        x_embed += pos_embedder(jnp.zeros((batch_size, 1)) + 2.)
+        t_embed += pos_embedder(jnp.zeros((batch_size, 1)) + 3.)
+        
+        # [3, batch_size, embed_dim]
+        nn_input = jnp.concatenate((y_embed[None,:,:], x_embed[None,:,:], t_embed[None,:,:]), axis=0)
+        
+        for i, size in enumerate(self.net_arch):
+            out = TFBlock(self.embed_dim, self.n_heads)(nn_input)
+            nn_input = out
+
+        # [batch_size, 3, embed_dim]
+        out = out.transpose(1, 0, 2)
+        # [batch_size, 3 * embed_dim]
+        out = out.reshape(batch_size, -1)
+        
+        out = hk.Linear(self.embed_dim, name="fc_out1", **init_weights())(out)
+        out = self.activation_fn(out)
+        out = hk.Linear(self.noise_dim, name="fc_out2", **init_weights())(out)
         return out
 
 
@@ -200,6 +316,7 @@ class DiffusionModel(hk.Module):
             y_i = jax.random.normal(hk.next_rng_key(), shape=(n_batch, self.noise_dim))
             # trace denoised outputs
             y_i_trace = dict()
+            y_i_trace[self.n_denoise] = (y_i, None)
             # denoising chain
             for i in range(self.n_denoise, 0, -1):
                 t_i = jnp.array([[i / self.n_denoise]])
@@ -207,7 +324,7 @@ class DiffusionModel(hk.Module):
                 noise = random.normal(hk.next_rng_key(), shape=(n_batch, self.noise_dim)) if i > 1 else 0
                 eps = self.du(y_i, x, t_i)
                 y_i = self.oneover_sqrta[i] * (y_i - self.ma_over_sqrtmab_inv[i] * eps) + self.sqrt_beta_t[i] * noise
-                y_i_trace[i-1] = [y_i, eps] # action, eps
+                y_i_trace[i-1] = (y_i, eps) # action, eps
             return y_i, y_i_trace
         return self.du(y_t, x, t)
 
@@ -217,6 +334,8 @@ class DiffusionModel(hk.Module):
 
 class DUPolicy(BasePolicy):
     """Policy class for Diffuser."""
+    supported_policies = ["mlp", "transformer"]
+
     def __init__(
         self,
         observation_space: gym.spaces.Space,
@@ -224,8 +343,10 @@ class DUPolicy(BasePolicy):
         lr_schedule: Schedule,
         net_arch: Optional[List[int]] = None, 
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.leaky_relu,
+        policy_type: str = 'mlp',
         embed_dim: int = 128,
         hidden_dim: int = 512,
+        n_heads: int = 4, # for transformer
         n_denoise: int = 50,
         # variance scheduler
         beta_scheduler: str = 'linear',
@@ -256,10 +377,13 @@ class DUPolicy(BasePolicy):
         if net_arch is None:
             net_arch = [64, 64]
         
+        self.policy_type = policy_type
+        assert policy_type in DUPolicy.supported_policies, f"{policy_type} is not supported diffusion policy."
         self.net_arch = net_arch
         self.noise_dim = action_space.shape[-1] # noise dim is size of action
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
+        self.n_heads = n_heads
         self.n_denoise = n_denoise
         self.activation_fn = activation_fn
 
@@ -290,13 +414,26 @@ class DUPolicy(BasePolicy):
         return data
 
     def _build_actor(self) -> hk.Module:
-        du = MLPDiffusionModel(
-            embed_dim=self.embed_dim,
-            hidden_dim=self.hidden_dim,
-            noise_dim=self.noise_dim,
-            net_arch=self.net_arch,
-            activation_fn=self.activation_fn,
-        )
+        if self.policy_type == "mlp":
+            du = MLPDiffusionModel(
+                embed_dim=self.embed_dim,
+                hidden_dim=self.hidden_dim,
+                noise_dim=self.noise_dim,
+                net_arch=self.net_arch,
+                activation_fn=self.activation_fn,
+            )
+        elif self.policy_type == "transformer":
+            du = TFDiffusionModel(
+                n_heads=self.n_heads,
+                embed_dim=self.embed_dim, 
+                hidden_dim=self.hidden_dim,
+                noise_dim=self.noise_dim,
+                net_arch=self.net_arch,
+                activation_fn=self.activation_fn,
+            )
+        else:
+            raise NotImplementedError
+
         return DiffusionModel(
             du=du,
             n_denoise=self.n_denoise,
@@ -351,6 +488,7 @@ class DUPolicy(BasePolicy):
         observation = self.preprocess(observation)
         (y_i, y_i_store), _ = self._actor_denoise(observation, self.params, self.state, next(self.rng))
         return y_i, y_i_store
+
 
 MlpPolicy = DUPolicy
 

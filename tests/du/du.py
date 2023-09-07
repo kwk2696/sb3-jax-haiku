@@ -34,16 +34,18 @@ def main(args):
             env=env_train,
             replay_buffer=buff,
             learning_rate=1e-4,
-            batch_size=64,
+            batch_size=256,
             verbose=1,
             seed=777,
-            wandb_log='test/du',
+            wandb_log=f'test/du/{args.type}',
             policy_kwargs=dict(
-                net_arch=[128]*5,
+                policy_type=args.type,
+                net_arch=[128]*3,
                 embed_dim=64,
                 hidden_dim=128,
+                n_heads=4,
                 n_denoise=50,
-                beta_scheduler='cosine',
+                beta_scheduler='linear',
                 beta=(1e-4, 0.02),
                 normalization_class=RunningNormLayer,
             )
@@ -68,5 +70,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--test", action='store_true')
+    parser.add_argument("--type", type=str, default='mlp')
     args = parser.parse_args()
     main(args)

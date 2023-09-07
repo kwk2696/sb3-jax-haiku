@@ -84,14 +84,13 @@ class DU(OfflineAlgorithm):
                 actions=actions,
                 rng=next(self.policy.rng),
             )
-            
             actor_losses.append(np.array(info["actor_loss"]))
 
         self._n_updates += gradient_steps 
         
         # checking action mse ...
         if self._n_updates % 1000 == 0:
-            pred_actions, _ = self.policy._predict(replay_data.observations)
+            pred_actions, pred_infos = self.policy._predict(replay_data.observations)
             action_mse = jnp.mean(jnp.square(replay_data.actions - pred_actions))
             self.logger.record("train/mse", action_mse)
             if self.wandb_log is not None:
@@ -115,18 +114,19 @@ class DU(OfflineAlgorithm):
         actions: jax.Array,
         rng=None,
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
-        
-        batch_size = observations.shape[0]
 
+        batch_size = observations.shape[0]
+        rng_n, rng_t, rng_a = jax.random.split(rng, num=3)
+        
         # randomly sample some noise
-        noise = jax.random.normal(rng, shape=(batch_size, self.policy.noise_dim))
+        noise = jax.random.normal(rng_n, shape=(batch_size, self.policy.noise_dim))
 
         # add noise to clean target actions
-        _ts = jax.random.randint(rng, (batch_size, 1), minval=1, maxval=self.policy.n_denoise+1)
+        _ts = jax.random.randint(rng_t, (batch_size, 1), minval=1, maxval=self.policy.n_denoise+1)
         y_t = self.policy.ddpm_dict.sqrtab[_ts] * actions + self.policy.ddpm_dict.sqrtmab[_ts] * noise
         
         # use diffusion model to predict noise
-        noise_pred, new_state = self.policy._actor(y_t, observations, _ts / self.policy.n_denoise, params, state, rng)
+        noise_pred, new_state = self.policy._actor(y_t, observations, _ts / self.policy.n_denoise, params, state, rng_a)
 
         # return mse between predicted and true noise
         loss = jnp.mean(jnp.square(noise - noise_pred))
