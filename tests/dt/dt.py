@@ -24,15 +24,28 @@ def main(args):
     obs_space, act_space = env.observation_space, env.action_space
     
     # Make Buffer
+    # Load trajectoreis
     data_path = f'./tests/data/cheetah_dir/cheetah_dir-0-expert.pkl'
     with open(data_path, 'rb') as f:
         trajectories = pickle.load(f)
-
+    print(len(trajectories), trajectories[0].keys())
+    # Load prompt trajectories
+    prompt_data_path = f'./tests/data/cheetah_dir/cheetah_dir-0-prompt-expert.pkl'
+    with open(prompt_data_path, 'rb') as f:
+        prompt_trajectories = pickle.load(f)
+    print(len(prompt_trajectories), prompt_trajectories[0].keys())
+    
+    prompt_length = 1 
+    if args.type == 'fix' or args.type == 'soft':
+        prompt_length = 5
+    
     buff = TrajectoryBuffer(
         trajectories,
         max_length=20,
         max_ep_length=max_ep_length,
         scale=scale,
+        prompt_trajectories=prompt_trajectories,
+        prompt_length=prompt_length, 
         observation_space=obs_space,
         action_space=act_space,
     )
@@ -47,15 +60,18 @@ def main(args):
             learning_rate=1e-4,
             batch_size=256,
             verbose=1,
-            wandb_log='test/dt/st',
+            wandb_log=f'test/dt_st/{type}',
             policy_kwargs=dict(
+                num_tasks=1,
+                prompt_type=args.type,
+                prompt_length=prompt_length,
                 max_length=20,
                 max_ep_length=max_ep_length,
                 hidden_size=128,
                 n_layer=3,
                 n_head=1,
                 n_inner=4*128,
-                activation_function='relu',
+                activation_function='gelu_new',
                 n_positions=1024,
                 resid_pdrop=.1,
                 attn_pdrop=.1,
@@ -66,6 +82,11 @@ def main(args):
             ),
         )
 
+        if args.type == 'fix':
+            # setting evaluation prompt
+            o, a, r, d, rtg, t, m  = buff.sample_prompt(1)
+            dt.policy.set_prompt((o, a, r, rtg, t, m))
+        
         mean_reward, _ = evaluate_traj_policy(
             model=dt, 
             env=env, 
@@ -78,7 +99,7 @@ def main(args):
             target_return=env_target/scale,
         )
         print(f"Before Learning: {mean_reward}")
-        dt.learn(total_timesteps=1_000, log_interval=10)
+        dt.learn(total_timesteps=2_000, log_interval=100)
         mean_reward, _ = evaluate_traj_policy(
             model=dt, 
             env=env, 
@@ -91,12 +112,18 @@ def main(args):
             target_return=env_target/scale,
         )
         print(f"After Learning: {mean_reward}")
-        dt.save(path='./tests/model/dt/st')
+        dt.save(path=f'./tests/model/dt_st/{type}')
     
     if args.test:
         print_y("<< Testing DT (single-task) Model >>")
         # Loading Model
-        _dt = DT.load(path='./tests/model/dt/st')
+        _dt = DT.load(path=f'./tests/model/dt_st/{type}')
+
+        if args.type == 'fix':
+            # setting evaluation prompt
+            o, a, r, d, rtg, t, m  = buff.sample_prompt(1)
+            _dt.policy.set_prompt((o, a, r, rtg, t, m))
+
         mean_reward, _ = evaluate_traj_policy(
             model=_dt, 
             env=env, 
@@ -115,5 +142,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--test", action='store_true')
+    parser.add_argument("--type", type=str, default=None)
     args = parser.parse_args()
     main(args)

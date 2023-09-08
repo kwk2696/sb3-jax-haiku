@@ -13,13 +13,17 @@ from sb3_jax.common.offline_algorithm import OfflineAlgorithm
 from sb3_jax.common.buffers import BaseBuffer, TrajectoryBuffer
 from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from sb3_jax.common.jax_utils import jit_optimize, jit_optimize_with_state
-from sb3_jax.dt.policies import DTPolicy
+from sb3_jax.dt.policies import TDTPolicy
 
 
-class DT(OfflineAlgorithm):
+class TDT(OfflineAlgorithm):
+    """ 
+        Soft Prompt Decision Transformer.
+        Learnable prompt with pre-trained decision transformer.
+    """
     def __init__(
         self,
-        policy: Union[str, Type[DTPolicy]],
+        policy: Union[str, Type[TDTPolicy]],
         env: Union[GymEnv, str],
         replay_buffer: Type[BaseBuffer] = TrajectoryBuffer,  
         learning_rate: Union[float, Schedule] = 3e-4,
@@ -31,10 +35,10 @@ class DT(OfflineAlgorithm):
         wandb_log: Optional[str] = None,
         policy_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
-        seed: Optional[int] = 1,
+        seed: Optional[int] = None,
         _init_setup_model: bool = True,
     ):
-        super(DT, self).__init__(
+        super(TDT, self).__init__(
             policy,
             env,
             replay_buffer=replay_buffer,
@@ -57,41 +61,36 @@ class DT(OfflineAlgorithm):
             self._setup_model()
 
     def _setup_model(self) -> None:
-        super(DT, self)._setup_model()
+        super(TDT, self)._setup_model()
 
     def train(self, gradient_steps: int, batch_size: int = 256) -> None:
         
         actor_losses = []
-
         for gradient_step in range(gradient_steps):
-            
             # TODO: need faster replay buffer
             #start = time.time()
             replay_data = self.replay_buffer.sample(batch_size)
-            if self.policy.prompt_type == 'fix':
-                prompt_data = self.replay_buffer.sample_prompt(batch_size)
-                prompt = (prompt_data.observations, prompt_data.actions, prompt_data.rewards, \
-                    prompt_data.returns_to_go, prompt_data.timesteps, prompt_data.masks)
-            else:
-                prompt = None
             #end =  time.time()
             #print("buff", end - start)
 
-            # NOTE: observations are normalized from the buffer
+            # TODO: do we need preprocessing the other inputs? 
+            #observations = self.policy.preprocess(replay_data.observations, training=True)
             observations = replay_data.observations
             actions = replay_data.actions
+            if isinstance(self.action_space, gym.spaces.Discrete):
+                actions = actions.squeeze()
             rewards = replay_data.rewards
             dones = replay_data.dones
             returns_to_go = replay_data.returns_to_go
             timesteps = replay_data.timesteps
             masks = replay_data.masks
-            
-            self.policy.optimizer_state, self.policy.params, self.policy.state, loss, info = jit_optimize_with_state(
+            # # # # # # # # # # # # # # # # # # # # # # # # # # 
+             
+            self.policy.optimizer_state, self.policy.params, loss, info = jit_optimize(
                 self._loss,
                 self.policy.optimizer,
                 self.policy.optimizer_state,
                 self.policy.params,
-                self.policy.state,
                 self.policy.max_grad_norm,
                 observations=observations,
                 actions=actions,
@@ -99,9 +98,10 @@ class DT(OfflineAlgorithm):
                 returns_to_go=returns_to_go,
                 timesteps=timesteps,
                 masks=masks,
-                prompt=prompt,
                 deterministic=False,
-                rng=next(self.policy.rng),
+                pretrained_params=self.policy.pretrained_policy.params,
+                pretrained_state=self.policy.pretrained_policy.state,
+                pretrained_rng=next(self.policy.pretrained_policy.rng),
             )
             actor_losses.append(np.array(info["actor_loss"]))
         
@@ -123,23 +123,25 @@ class DT(OfflineAlgorithm):
     def _loss(
         self,
         params: hk.Params,
-        state: hk.Params,
         observations: jnp.ndarray,
         actions: jnp.ndarray,
         rewards: jnp.ndarray,
         returns_to_go: jnp.ndarray,
         timesteps: jnp.ndarray, 
         masks: jnp.ndarray,
-        prompt: Tuple[jnp.ndarray],
         deterministic: jnp.ndarray,
-        rng=None,
-    ) -> Tuple[jnp.ndarray, Tuple[Dict[str, jnp.ndarray]]]:
-        
-        (observation_preds, action_preds, reward_preds, _), new_state = self.policy._actor(
-            observations, actions, rewards, returns_to_go, timesteps, masks, None, prompt, 
-            deterministic=False, params=params, state=state, rng=rng
+        pretrained_params: hk.Params,
+        pretrained_state: hk.Params,
+        pretrained_rng=None,
+    ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
+        (observation_preds, action_preds, reward_preds, _), _  = self.policy._actor(
+            observations, actions, rewards, returns_to_go, timesteps, masks, 
+            deterministic=False, params=params, pretrained_params=pretrained_params,
+            pretrained_state=pretrained_state, pretrained_rng=pretrained_rng,
         )
         action_dim = action_preds.shape[2] 
+        #action_preds = action_preds.reshape(-1, action_dim)[masks.reshape(-1) > 0]
+        #action_targets = actions.reshape(-1, action_dim)[masks.reshape(-1) > 0]
         
         # preprocess masks 
         masks = masks.reshape(-1)
@@ -149,11 +151,12 @@ class DT(OfflineAlgorithm):
         action_targets = actions.reshape(-1, action_dim)
         action_targets = jnp.where(masks, action_targets, 0)
             
+        # Define loss
         loss = jnp.mean(jnp.square(action_preds - action_targets)) 
         info = {
             'actor_loss': loss
         }
-        return loss, (new_state, info)
+        return loss, info
 
     def learn(
         self,
@@ -163,10 +166,10 @@ class DT(OfflineAlgorithm):
         eval_env: Optional[GymEnv] = None,
         eval_freq: int = -1,
         n_eval_episodes: int = 5,
-        tb_log_name: str = "DT",
+        tb_log_name: str = "TDT",
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
-    ) -> "DT":
+    ) -> "TDT":
         
         # wandb configs
         self.wandb_config = dict(
@@ -178,7 +181,7 @@ class DT(OfflineAlgorithm):
         )
         self.wandb_config.update(self.policy._get_constructor_parameters())
 
-        return super(DT, self).learn(
+        return super(TDT, self).learn(
             total_timesteps=total_timesteps,
             callback=callback,
             log_interval=log_interval,
@@ -192,12 +195,12 @@ class DT(OfflineAlgorithm):
 
     def _save_jax_params(self) -> Dict[str, hk.Params]:
         params_dict = {}
-        params_dict['policy'] = self.policy.params
+        params_dict['policy_params'] = self.policy.params
         params_dict['policy_state'] = self.policy.state
         return params_dict
 
     def _load_jax_params(self, params: Dict[str, hk.Params]) -> None:
-        self.policy.params = params['policy']
+        self.policy.params = params['policy_params']
         self.policy.state = params['policy_state']
 
     def _save_norm_layer(self, path: str) -> None:

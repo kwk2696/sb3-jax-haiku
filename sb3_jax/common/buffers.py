@@ -425,89 +425,17 @@ class OfflineBuffer(BaseBuffer):
         return ReplayBufferSamples(*tuple(map(self.to_jnp, data)))
 
 
-class MTTrajectoryBuffer(BaseBuffer):
-    """Multi-task trajectory buffer."""
-
-    def __init__(
-        self,
-        max_length: int,
-        max_ep_length: int,
-        scale: float,
-        buffer_size: int = None,
-        observation_space: spaces.Space = None,
-        action_space: spaces.Space = None,
-        n_envs: int = 1, # Not used
-    ):
-        super(MTTrajectoryBuffer, self).__init__(buffer_size, observation_space, action_space)
-        self._buffers = []
-        self.max_length = max_length
-        self.max_ep_length = max_ep_length
-        self.scale = scale
-        
-        self.obs_means, self.obs_stds = [], []
-
-    @property
-    def buffers(self):
-        return self._buffers
-
-    def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
-        # sample batch_size per task
-        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
-        for buff in self.buffers:
-            samples = buff.sample(batch_size)
-            observations.append(samples.observations)
-            actions.append(samples.actions)
-            rewards.append(samples.rewards)
-            dones.append(samples.dones)
-            returns_to_go.append(samples.returns_to_go)
-            timesteps.append(samples.timesteps)
-            masks.append(samples.masks)
-
-        # concatenate
-        data = (
-            jnp.concatenate(observations),
-            jnp.concatenate(actions),
-            jnp.concatenate(rewards),
-            jnp.concatenate(dones),
-            jnp.concatenate(returns_to_go),
-            jnp.concatenate(timesteps),
-            jnp.concatenate(masks),
-        )
-        return TrajectoryBufferSamples(*tuple(data))
-
-    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
-        raise NotImplementedError
-
-    def add_task(self, trajectories: Dict[str, np.ndarray]) -> None:
-        self.buffers.append(TrajectoryBuffer(
-            trajectories,
-            self.max_length,
-            self.max_ep_length,
-            self.scale,
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-        ))
-        self.obs_means.append(self.buffers[-1].obs_mean)
-        self.obs_stds.append(self.buffers[-1].obs_std)
-    
-    def set_avg_obs(self, obs_mean: np.ndarray, obs_std: np.ndarray):
-        self.obs_means, self.obs_stds = [], []
-        for buff in self.buffers:
-            buff.obs_mean = obs_mean
-            buff.obs_std = obs_std
-            self.obs_means.append(buff.obs_mean)
-            self.obs_stds.append(buff.obs_std)
-
-
 class TrajectoryBuffer(BaseBuffer):
     """Buffer used in DT."""
 
     def __init__(
         self,
-        trajectories: Dict[str, np.ndarray],
+        trajectories: List[Dict[str, np.ndarray]],
         max_length: int,
         max_ep_length: int,
         scale: float, # normalization for rewards/returns
+        prompt_trajectories: Optional[List[Dict[str, np.ndarray]]] = None,
+        prompt_length: int = None,
         buffer_size: int = None,
         observation_space: spaces.Space = None,
         action_space: spaces.Space = None,
@@ -518,6 +446,11 @@ class TrajectoryBuffer(BaseBuffer):
         self.max_length = max_length
         self.max_ep_length = max_ep_length
         self.scale = scale
+
+        # prompt params
+        self.prompt_trajectories = prompt_trajectories
+        self.prompt_length = prompt_length
+
         self.setup()
 
     def setup(self) -> None:
@@ -606,6 +539,56 @@ class TrajectoryBuffer(BaseBuffer):
             np.concatenate(masks, axis=0).astype(np.float32),
         )
         return TrajectoryBufferSamples(*tuple(map(self.to_jnp, data)))
+    
+    def sample_prompt(self, batch_size: int) -> TrajectoryBufferSamples:
+        batch_inds = np.random.choice(
+            np.arange(len(self.prompt_trajectories)),
+            size=batch_size,
+            replace=True,
+            # p=self.p_sample,
+        )
+        return self._get_prompt_samples(batch_inds)
+
+    def _get_prompt_samples(self, batch_inds: np.ndarray) -> TrajectoryBufferSamples:
+        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
+        
+        for i in range(len(batch_inds)):
+            traj = self.prompt_trajectories[int(batch_inds[i])] # random select traj
+            si = np.random.randint(0, traj['rewards'].shape[0] - 1)
+
+            # get sequences from dataset
+            observations.append(traj['observations'][si:si + self.prompt_length].reshape(1, -1, self.obs_dim))
+            actions.append(traj['actions'][si:si + self.prompt_length].reshape(1, -1, self.act_dim))
+            rewards.append(traj['rewards'][si:si + self.prompt_length].reshape(1, -1, 1))
+            if 'terminals' in traj: dones.append(traj['terminals'][si:si + self.prompt_length].reshape(1, -1))
+            else: dones.append(traj['dones'][si:si + self.prompt_length].reshape(1, -1))
+            timesteps.append(np.arange(si, si + observations[-1].shape[1]).reshape(1, -1))
+            timesteps[-1][timesteps[-1] >= self.max_ep_length] = self.max_ep_length - 1 # padding cutoff
+            returns_to_go.append(self.discount_cumsum(traj['rewards'][si:], gamma=1.)[:observations[-1].shape[1] + 1].reshape(1, -1, 1))
+            if returns_to_go[-1].shape[1] <= observations[-1].shape[1]:
+                returns_to_go[-1] = np.concatenate([returns_to_go[-1], np.zeros((1, 1, 1))], axis=1)
+            
+            # padding and state + reward normalization
+            tlen = observations[-1].shape[1]
+            observations[-1] = np.concatenate([np.zeros((1, self.prompt_length - tlen, self.obs_dim)), observations[-1]], axis=1)
+            observations[-1] = (observations[-1] - self.obs_mean) / self.obs_std
+            actions[-1] = np.concatenate([np.ones((1, self.prompt_length - tlen, self.act_dim)) * -10, actions[-1]], axis=1)
+            rewards[-1] = np.concatenate([np.zeros((1, self.prompt_length - tlen, 1)), rewards[-1]], axis=1)
+            dones[-1] = np.concatenate([np.ones((1, self.prompt_length - tlen)) * 2, dones[-1]], axis=1)
+            returns_to_go[-1] = np.concatenate([np.zeros((1, self.prompt_length - tlen, 1)), returns_to_go[-1]], axis=1) / self.scale
+            timesteps[-1] = np.concatenate([np.zeros((1, self.prompt_length - tlen)), timesteps[-1]], axis=1)
+            masks.append(np.concatenate([np.zeros((1, self.prompt_length - tlen)), np.ones((1, tlen))], axis=1))
+
+        data = (
+            np.concatenate(observations, axis=0).astype(np.float32),
+            np.concatenate(actions, axis=0).astype(np.float32),
+            np.concatenate(rewards, axis=0).astype(np.float32),
+            np.concatenate(dones, axis=0).astype(np.int32),
+            np.concatenate(returns_to_go, axis=0)[:,:-1].astype(np.float32),
+            np.concatenate(timesteps, axis=0).astype(np.int32),
+            np.concatenate(masks, axis=0).astype(np.float32),
+        )
+        return TrajectoryBufferSamples(*tuple(map(self.to_jnp, data)))
 
     def discount_cumsum(self, x: np.ndarray, gamma: float):
         discount_cumsum = np.zeros_like(x)
@@ -613,3 +596,110 @@ class TrajectoryBuffer(BaseBuffer):
         for t in reversed(range(x.shape[0]-1)):
             discount_cumsum[t] = x[t] + gamma * discount_cumsum[t+1]
         return discount_cumsum
+
+
+class MTTrajectoryBuffer(BaseBuffer):
+    """Multi-task trajectory buffer."""
+
+    def __init__(
+        self,
+        max_length: int,
+        max_ep_length: int,
+        scale: float,
+        prompt_length: int = None, 
+        buffer_size: int = None,
+        observation_space: spaces.Space = None,
+        action_space: spaces.Space = None,
+        n_envs: int = 1, # Not used
+    ):
+        super(MTTrajectoryBuffer, self).__init__(buffer_size, observation_space, action_space)
+        self._buffers = []
+        self.max_length = max_length
+        self.max_ep_length = max_ep_length
+        self.scale = scale
+        self.prompt_length = prompt_length
+        
+        self.obs_means, self.obs_stds = [], []
+
+    @property
+    def buffers(self):
+        return self._buffers
+
+    def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+        # sample batch_size per task
+        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
+        for buff in self.buffers:
+            samples = buff.sample(batch_size)
+            observations.append(samples.observations)
+            actions.append(samples.actions)
+            rewards.append(samples.rewards)
+            dones.append(samples.dones)
+            returns_to_go.append(samples.returns_to_go)
+            timesteps.append(samples.timesteps)
+            masks.append(samples.masks)
+
+        # concatenate
+        data = (
+            jnp.concatenate(observations),
+            jnp.concatenate(actions),
+            jnp.concatenate(rewards),
+            jnp.concatenate(dones),
+            jnp.concatenate(returns_to_go),
+            jnp.concatenate(timesteps),
+            jnp.concatenate(masks),
+        )
+        return TrajectoryBufferSamples(*tuple(data))
+
+    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+        raise NotImplementedError
+    
+    def sample_prompt(self, batch_size: int) -> TrajectoryBufferSamples:
+        # sample batch_size per task
+        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
+        for buff in self.buffers:
+            samples = buff.sample_prompt(batch_size)
+            observations.append(samples.observations)
+            actions.append(samples.actions)
+            rewards.append(samples.rewards)
+            dones.append(samples.dones)
+            returns_to_go.append(samples.returns_to_go)
+            timesteps.append(samples.timesteps)
+            masks.append(samples.masks)
+
+        # concatenate
+        data = (
+            jnp.concatenate(observations),
+            jnp.concatenate(actions),
+            jnp.concatenate(rewards),
+            jnp.concatenate(dones),
+            jnp.concatenate(returns_to_go),
+            jnp.concatenate(timesteps),
+            jnp.concatenate(masks),
+        )
+        return TrajectoryBufferSamples(*tuple(data))
+
+    def add_task(
+        self, 
+        trajectories: Dict[str, np.ndarray], 
+        prompt_trajectories: Optional[Dict[str, np.ndarray]] = None
+    ) -> None:
+        self.buffers.append(TrajectoryBuffer(
+            trajectories,
+            self.max_length,
+            self.max_ep_length,
+            self.scale,
+            prompt_trajectories,
+            self.prompt_length,
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+        ))
+        self.obs_means.append(self.buffers[-1].obs_mean)
+        self.obs_stds.append(self.buffers[-1].obs_std)
+    
+    def set_avg_obs(self, obs_mean: np.ndarray, obs_std: np.ndarray):
+        self.obs_means, self.obs_stds = [], []
+        for buff in self.buffers:
+            buff.obs_mean = obs_mean
+            buff.obs_std = obs_std
+            self.obs_means.append(buff.obs_mean)
+            self.obs_stds.append(buff.obs_std)
