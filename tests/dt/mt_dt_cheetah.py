@@ -123,7 +123,7 @@ def main(args):
             ),
         )
 
-        dt.learn(total_timesteps=5_000, log_interval=100)
+        dt.learn(total_timesteps=20_000, log_interval=100)
         for i, (env, idx) in enumerate(zip(train_envs, train_env_indxes)):
             if args.type == 'fix':
                 o, a, r, d, rtg, t, m = train_buff.buffers[i].sample_prompt(1)
@@ -131,7 +131,7 @@ def main(args):
             elif args.type == 'id' or args.type == 'soft':
                 dt.policy.set_task_id(i)
             
-            mean_reward, _ = evaluate_traj_policy(
+            mean_reward, std = evaluate_traj_policy(
                 model=dt, 
                 env=env, 
                 n_eval_episodes=1,
@@ -142,7 +142,7 @@ def main(args):
                 scale=scale,
                 target_return=train_env_targets[i],
             )
-            print(f"After Learning Train Env{idx}: {mean_reward}")
+            print(f"After Learning Train Env{idx}: {mean_reward:.2f} +/- {std:.2f}")
         print_b("="*20)
         for i, (env, idx) in enumerate(zip(test_envs, test_env_indxes)):
             if args.type == 'fix':
@@ -151,7 +151,7 @@ def main(args):
             elif args.type == 'id' or args.type == 'soft':
                 dt.policy.set_task_id(i)
             
-            mean_reward, _ = evaluate_traj_policy(
+            mean_reward, std = evaluate_traj_policy(
                 model=dt, 
                 env=env, 
                 n_eval_episodes=1,
@@ -162,7 +162,7 @@ def main(args):
                 scale=scale,
                 target_return=test_env_targets[i],
             )
-            print(f"After Learning Test Env{idx}: {mean_reward}")
+            print(f"After Learning Test Env{idx}: {mean_reward:.2f} +/- {std:.2f}")
         dt.save(path=f'./tests/model/dt_mt/cheetah_vel/{len(train_envs)}')
 
     else: # Evaluation
@@ -176,7 +176,7 @@ def main(args):
             elif args.type == 'id' or args.type == 'soft':
                 _dt.policy.set_task_id(i)
             
-            mean_reward, _ = evaluate_traj_policy(
+            mean_reward, std = evaluate_traj_policy(
                 model=_dt, 
                 env=env, 
                 n_eval_episodes=1,
@@ -187,16 +187,16 @@ def main(args):
                 scale=scale,
                 target_return=train_env_targets[i],
             )
-            print(f"After Learning Train Env{idx}: {mean_reward}")
+            print(f"After Learning Train Env{idx}: {mean_reward:.2f} +/- {std:.2f}")
         print_b("="*20)
         for i, (env, idx) in enumerate(zip(test_envs, test_env_indxes)):
             if args.type == 'fix':
                 o, a, r, d, rtg, t, m = test_buff.buffers[i].sample_prompt(1)
-                dt.policy.set_prompt((o, a, r, rtg, t, m))
+                _dt.policy.set_prompt((o, a, r, rtg, t, m))
             elif args.type == 'id' or args.type == 'soft':
-                dt.policy.set_task_id(i)
+                _dt.policy.set_task_id(i)
             
-            mean_reward, _ = evaluate_traj_policy(
+            mean_reward, std = evaluate_traj_policy(
                 model=_dt, 
                 env=env, 
                 n_eval_episodes=1,
@@ -207,7 +207,7 @@ def main(args):
                 scale=scale,
                 target_return=test_env_targets[i],
             )
-            print(f"After Learning Test Env{idx}: {mean_reward}")
+            print(f"After Learning Test Env{idx}: {mean_reward:.2f} +/- {std:.2f}")
 
 
 if __name__ == "__main__":

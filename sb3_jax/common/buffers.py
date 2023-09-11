@@ -454,6 +454,7 @@ class TrajectoryBuffer(BaseBuffer):
         self.setup()
 
     def setup(self) -> None:
+        # 1. traj setup
         observations, traj_lengths, returns = [], [], []
         for path in self.trajectories:
             observations.append(path['observations'])
@@ -489,6 +490,34 @@ class TrajectoryBuffer(BaseBuffer):
         self.sorted_inds = sorted_inds
         self.num_trajectories = num_trajectories
         self.num_timesteps = num_timesteps
+
+        # 2. prompt traj setup
+        observations, traj_lengths, returns = [], [], []
+        for path in self.prompt_trajectories:
+            observations.append(path['observations'])
+            traj_lengths.append(len(path['observations']))
+            returns.append(path['rewards'].sum())
+        traj_lengths, returns = np.array(traj_lengths), np.array(returns)
+
+        observations = np.concatenate(observations, axis=0)
+        num_timesteps = sum(traj_lengths)
+
+        # only train on top pct_traj trajectories
+        pct_traj = 1.
+        num_timesteps = max(int(pct_traj*num_timesteps), 1)
+        sorted_inds = np.argsort(returns) # lowest to highest
+        num_trajectories = 1 
+        timesteps = traj_lengths[sorted_inds[-1]]
+        ind = len(self.prompt_trajectories) - 2
+        while ind >= 0 and timesteps + traj_lengths[sorted_inds[ind]] <= num_timesteps:
+            timesteps += traj_lengths[sorted_inds[ind]]
+            num_trajectories += 1 
+            ind -= 1 
+        sorted_inds = sorted_inds[-num_trajectories:]
+        
+        # used to reweight sampling so we sample according to timesteps instead of trajectories
+        self.prompt_sorted_inds = sorted_inds
+        self.prompt_num_trajectories = num_trajectories
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
         batch_inds = np.random.choice(
@@ -543,7 +572,7 @@ class TrajectoryBuffer(BaseBuffer):
     def sample_prompt(self, batch_size: int) -> TrajectoryBufferSamples:
         batch_inds = np.random.choice(
             np.arange(len(self.prompt_trajectories)),
-            size=batch_size,
+            size=int(self.prompt_num_trajectories * batch_size), # J trajectory segments
             replace=True,
             # p=self.p_sample,
         )
@@ -551,9 +580,11 @@ class TrajectoryBuffer(BaseBuffer):
 
     def _get_prompt_samples(self, batch_inds: np.ndarray) -> TrajectoryBufferSamples:
         observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
-        
+        batch_size = int(len(batch_inds) / self.prompt_num_trajectories)
+
         for i in range(len(batch_inds)):
             traj = self.prompt_trajectories[int(batch_inds[i])] # random select traj
+            # traj = self.prompt_trajectories[int(self.prompt_sorted_inds[-1])]
             si = np.random.randint(0, traj['rewards'].shape[0] - 1)
 
             # get sequences from dataset
@@ -579,14 +610,22 @@ class TrajectoryBuffer(BaseBuffer):
             timesteps[-1] = np.concatenate([np.zeros((1, self.prompt_length - tlen)), timesteps[-1]], axis=1)
             masks.append(np.concatenate([np.zeros((1, self.prompt_length - tlen)), np.ones((1, tlen))], axis=1))
 
+        observations = np.concatenate(observations, axis=0).astype(np.float32)
+        actions = np.concatenate(actions, axis=0).astype(np.float32)
+        rewards = np.concatenate(rewards, axis=0).astype(np.float32)
+        dones = np.concatenate(dones, axis=0).astype(np.int32)
+        returns_to_go = np.concatenate(returns_to_go, axis=0).astype(np.float32)
+        timesteps = np.concatenate(timesteps, axis=0).astype(np.int32)
+        masks = np.concatenate(masks, axis=0).astype(np.float32)
+        
         data = (
-            np.concatenate(observations, axis=0).astype(np.float32),
-            np.concatenate(actions, axis=0).astype(np.float32),
-            np.concatenate(rewards, axis=0).astype(np.float32),
-            np.concatenate(dones, axis=0).astype(np.int32),
-            np.concatenate(returns_to_go, axis=0)[:,:-1].astype(np.float32),
-            np.concatenate(timesteps, axis=0).astype(np.int32),
-            np.concatenate(masks, axis=0).astype(np.float32),
+            observations.reshape(batch_size, -1, observations.shape[-1]).astype(np.float32),
+            actions.reshape(batch_size, -1, actions.shape[-1]).astype(np.float32),
+            rewards.reshape(batch_size, -1, rewards.shape[-1]).astype(np.float32),
+            dones.reshape(batch_size, -1).astype(np.int32),
+            returns_to_go[:,:-1,:].reshape(batch_size, -1, returns_to_go.shape[-1]).astype(np.float32),
+            timesteps.reshape(batch_size, -1).astype(np.int32),
+            masks.reshape(batch_size, -1).astype(np.float32),
         )
         return TrajectoryBufferSamples(*tuple(map(self.to_jnp, data)))
 
