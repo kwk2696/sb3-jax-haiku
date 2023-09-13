@@ -14,8 +14,7 @@ from sb3_jax.common.buffers import BaseBuffer, OfflineBuffer
 from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from sb3_jax.common.jax_utils import stop_grad, jit_optimize_with_state
 from sb3_jax.common.policies import BasePolicy
-
-from meta_prompt.du.policies import DUPolicy
+from sb3_jax.du.policies import DUPolicy
 
 
 class DU(OfflineAlgorithm):

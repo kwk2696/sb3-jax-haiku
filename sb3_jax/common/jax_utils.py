@@ -16,7 +16,7 @@ def jit_optimize(
     max_grad_norm: float, 
     *args,
     **kwargs,
-) -> Tuple[Any, hk.Params, jnp.ndarray, Any]:
+) -> Tuple[Any, hk.Params, jax.Array, Any]:
     (loss, aux), grad = jax.value_and_grad(loss_function, has_aux=True)(
         params,
         *args, 
@@ -39,7 +39,7 @@ def jit_optimize_with_state(
     max_grad_norm: float, 
     *args,
     **kwargs,
-) -> Tuple[Any, hk.Params, jnp.ndarray, Any]:
+) -> Tuple[Any, hk.Params, jax.Array, Any]:
     (loss, (new_state, aux)), grad = jax.value_and_grad(loss_function, has_aux=True)(
         params,
         state,
@@ -53,7 +53,7 @@ def jit_optimize_with_state(
     return optimizer_state, params, new_state, loss, aux
 
 
-def stop_grad(x: jnp.ndarray):
+def stop_grad(x: jax.Array):
     return jax.lax.stop_gradient(x)
 
 
@@ -90,12 +90,27 @@ def polyak_update(
 
 @jax.jit
 def explained_variance(
-    y_pred: jnp.ndarray,
-    y_true: jnp.ndarray,
-) -> jnp.ndarray:
+    y_pred: jax.Array,
+    y_true: jax.Array,
+) -> jax.Array:
     """Computes fraction of variance that ypred expalined about y."""
     var_y = jnp.var(y_true)
     return 1 - jnp.var(y_true - y_pred) / var_y
+
+
+@jax.jit
+def kl_divergence(
+    p_mean: jax.Array,
+    p_std: jax.Array,
+    q_mean: jax.Array = None,
+    q_std: jax.Array = None,
+) -> jax.Array:
+    if q_mean is None:
+        return 0.5 * jnp.mean(-jnp.log(jnp.square(p_mean)) - 1. + jnp.square(p_std) + jnp.square(p_mean), axis=-1)
+    return jnp.mean((jnp.log(q_std) - jnp.log(p_std)) + \
+        ((jnp.square(p_std) + jnp.square(q_mean - p_mean)) / (2 * jnp.square(q_std))) - 0.5, axis=-1)
+
+
 
 # Learning Schedulers for Jax
 def warmup_scheduler(init_value: float, warmup_steps: int) -> Schedule:
@@ -103,5 +118,6 @@ def warmup_scheduler(init_value: float, warmup_steps: int) -> Schedule:
         return jnp.minimum((count + 1)/warmup_steps, 1.) * init_value
     return schedule
 
-def jax_print(x: jnp.ndarray):
+
+def jax_print(x: Any):
     jax.debug.print("{x}", x=x)
