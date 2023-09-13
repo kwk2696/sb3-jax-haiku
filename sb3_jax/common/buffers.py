@@ -435,6 +435,7 @@ class TrajectoryBuffer(BaseBuffer):
         max_ep_length: int,
         scale: float, # normalization for rewards/returns
         prompt_trajectories: Optional[List[Dict[str, np.ndarray]]] = None,
+        prompt_episode: int = 1,
         prompt_length: int = None,
         buffer_size: int = None,
         observation_space: spaces.Space = None,
@@ -449,6 +450,7 @@ class TrajectoryBuffer(BaseBuffer):
 
         # prompt params
         self.prompt_trajectories = prompt_trajectories
+        self.prompt_episode = prompt_episode
         self.prompt_length = prompt_length
 
         self.setup()
@@ -517,7 +519,7 @@ class TrajectoryBuffer(BaseBuffer):
         
         # used to reweight sampling so we sample according to timesteps instead of trajectories
         self.prompt_sorted_inds = sorted_inds
-        self.prompt_num_trajectories = num_trajectories
+        self.prompt_num_trajectories = 1 # num_trajectories
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
         batch_inds = np.random.choice(
@@ -572,7 +574,7 @@ class TrajectoryBuffer(BaseBuffer):
     def sample_prompt(self, batch_size: int) -> TrajectoryBufferSamples:
         batch_inds = np.random.choice(
             np.arange(len(self.prompt_trajectories)),
-            size=int(self.prompt_num_trajectories * batch_size), # J trajectory segments
+            size=int(self.prompt_episode * batch_size), # J trajectory segments
             replace=True,
             # p=self.p_sample,
         )
@@ -580,11 +582,10 @@ class TrajectoryBuffer(BaseBuffer):
 
     def _get_prompt_samples(self, batch_inds: np.ndarray) -> TrajectoryBufferSamples:
         observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
-        batch_size = int(len(batch_inds) / self.prompt_num_trajectories)
+        batch_size = int(len(batch_inds) / self.prompt_episode)
 
         for i in range(len(batch_inds)):
             traj = self.prompt_trajectories[int(batch_inds[i])] # random select traj
-            # traj = self.prompt_trajectories[int(self.prompt_sorted_inds[-1])]
             si = np.random.randint(0, traj['rewards'].shape[0] - 1)
 
             # get sequences from dataset
@@ -645,7 +646,8 @@ class MTTrajectoryBuffer(BaseBuffer):
         max_length: int,
         max_ep_length: int,
         scale: float,
-        prompt_length: int = None, 
+        prompt_episode: int = 1,
+        prompt_length: int = None,
         buffer_size: int = None,
         observation_space: spaces.Space = None,
         action_space: spaces.Space = None,
@@ -656,6 +658,8 @@ class MTTrajectoryBuffer(BaseBuffer):
         self.max_length = max_length
         self.max_ep_length = max_ep_length
         self.scale = scale
+
+        self.prompt_episode = prompt_episode
         self.prompt_length = prompt_length
         
         self.obs_means, self.obs_stds = [], []
@@ -728,6 +732,7 @@ class MTTrajectoryBuffer(BaseBuffer):
             self.max_ep_length,
             self.scale,
             prompt_trajectories,
+            self.prompt_episode,
             self.prompt_length,
             observation_space=self.observation_space,
             action_space=self.action_space,
