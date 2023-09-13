@@ -2,6 +2,7 @@ import warnings
 import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import tqdm
 import gym
 import numpy as np
 
@@ -125,7 +126,7 @@ def evaluate_traj_policy(
     ep_return = target_return
     episode_infos = []
 
-    for epi in range(n_eval_episodes):
+    for epi in tqdm.tqdm(range(n_eval_episodes)):
         observation = env.reset()
         
         # we keep all the histories
