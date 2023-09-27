@@ -97,9 +97,9 @@ class BCPolicy(BasePolicy):
         )
         return data
 
-    def _build_actor(self, net_arch: List[int], squash_output: bool = False) -> hk.Module:
+    def _build_actor(self, net_arch: List[int], output_dim: int = -1, squash_output: bool = False) -> hk.Module:
         return create_mlp(
-            output_dim=-1, 
+            output_dim=output_dim,
             net_arch=net_arch,
             activation_fn=self.activation_fn,
             squash_output=squash_output,
@@ -126,7 +126,7 @@ class BCPolicy(BasePolicy):
                     [features_extractor, action_net, self.action_dist_class(action_dim, **self.dist_kwargs)]
                 )
             else:
-                action_net = self._build_actor(self.net_arch + [action_dim], squash_output=True)
+                action_net = self._build_actor(self.net_arch, action_dim, squash_output=True)
                 action = hk.Sequential(
                     [features_extractor, action_net]
                 )

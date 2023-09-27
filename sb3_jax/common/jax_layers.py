@@ -66,8 +66,7 @@ class MLP(hk.Module):
     ):
         super(MLP, self).__init__()
         self.net_arch = net_arch
-        if output_dim > 0:
-            self.net_arch += [output_dim]
+        self.output_dim = output_dim
         self.activation_fn = activation_fn
         self.squash_output = squash_output
         self.drop_output = drop_output
@@ -76,15 +75,14 @@ class MLP(hk.Module):
     def __call__(self, x: jnp.ndarray, rng: int = None) -> jnp.ndarray:
         for i, size in enumerate(self.net_arch):
             x = hk.Linear(size, **init_weights())(x)
-            if i < len(self.net_arch)-1: # no activation at last layer
-                x = self.activation_fn(x)
-                if self.drop_output is not None:
-                    x = hk.dropout(rng, self.drop_output, x)
-                if self.batch_norm:
-                    x = hk.BatchNorm(True, True, 0.9)(x, True)
+            x = self.activation_fn(x)
+            if self.drop_output is not None:
+                x = hk.dropout(rng, self.drop_output, x)
+            if self.batch_norm:
+                x = hk.BatchNorm(True, True, 0.9)(x, True)
              
-         # if self.output_dim > 0:
-         #   x = hk.Linear(self.output_dim, **init_weights())(x)
+        if self.output_dim > 0:
+            x = hk.Linear(self.output_dim, **init_weights())(x)
         
         if self.squash_output:
             x = nn.tanh(x)

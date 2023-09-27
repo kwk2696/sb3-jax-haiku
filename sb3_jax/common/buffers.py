@@ -521,28 +521,30 @@ class TrajectoryBuffer(BaseBuffer):
         self.prompt_sorted_inds = sorted_inds
         self.prompt_num_trajectories = 1 # num_trajectories
 
-    def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+    def sample(self, batch_size: int, max_length: int = None, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
         batch_inds = np.random.choice(
             np.arange(self.num_trajectories),
             size=batch_size,
             replace=True,
             p=self.p_sample
         )
-        return self._get_samples(batch_inds, env=env)
+        return self._get_samples(batch_inds, max_length, env=env)
     
-    def _get_samples(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
-        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
-        
+    def _get_samples(self, batch_inds: np.ndarray, max_length: int = None, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+        observations, actions, next_observations, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], [], []
+        if max_length is None: max_length = self.max_length
+
         for i in range(len(batch_inds)):
             traj = self.trajectories[int(self.sorted_inds[batch_inds[i]])]
             si = np.random.randint(0, traj['rewards'].shape[0] - 1)
             
             # get sequences from dataset
-            observations.append(traj['observations'][si:si + self.max_length].reshape(1, -1, self.obs_dim))
-            actions.append(traj['actions'][si:si + self.max_length].reshape(1, -1, self.act_dim))
-            rewards.append(traj['rewards'][si:si + self.max_length].reshape(1, -1, 1))
-            if 'terminals' in traj: dones.append(traj['terminals'][si:si + self.max_length].reshape(1, -1))
-            else: dones.append(traj['dones'][si:si + self.max_length].reshape(1, -1))
+            observations.append(traj['observations'][si:si + max_length].reshape(1, -1, self.obs_dim))
+            actions.append(traj['actions'][si:si + max_length].reshape(1, -1, self.act_dim))
+            next_observations.append(traj['observations'][si + 1: si + max_length + 1].reshape(1, -1, self.obs_dim))
+            rewards.append(traj['rewards'][si:si + max_length].reshape(1, -1, 1))
+            if 'terminals' in traj: dones.append(traj['terminals'][si:si + max_length].reshape(1, -1))
+            else: dones.append(traj['dones'][si:si + max_length].reshape(1, -1))
             timesteps.append(np.arange(si, si + observations[-1].shape[1]).reshape(1, -1))
             timesteps[-1][timesteps[-1] >= self.max_ep_length] = self.max_ep_length - 1 # padding cutoff
             returns_to_go.append(self.discount_cumsum(traj['rewards'][si:], gamma=1.)[:observations[-1].shape[1] + 1].reshape(1, -1, 1))
@@ -550,19 +552,22 @@ class TrajectoryBuffer(BaseBuffer):
                 returns_to_go[-1] = np.concatenate([returns_to_go[-1], np.zeros((1, 1, 1))], axis=1)
             
             # padding and state + reward normalization
-            tlen = observations[-1].shape[1]
-            observations[-1] = np.concatenate([np.zeros((1, self.max_length - tlen, self.obs_dim)), observations[-1]], axis=1)
+            tlen, ntlen = observations[-1].shape[1], next_observations[-1].shape[1]
+            observations[-1] = np.concatenate([np.zeros((1, max_length - tlen, self.obs_dim)), observations[-1]], axis=1)
             observations[-1] = (observations[-1] - self.obs_mean) / self.obs_std
-            actions[-1] = np.concatenate([np.ones((1, self.max_length - tlen, self.act_dim)) * -10, actions[-1]], axis=1)
-            rewards[-1] = np.concatenate([np.zeros((1, self.max_length - tlen, 1)), rewards[-1]], axis=1)
-            dones[-1] = np.concatenate([np.ones((1, self.max_length - tlen)) * 2, dones[-1]], axis=1)
-            returns_to_go[-1] = np.concatenate([np.zeros((1, self.max_length - tlen, 1)), returns_to_go[-1]], axis=1) / self.scale
-            timesteps[-1] = np.concatenate([np.zeros((1, self.max_length - tlen)), timesteps[-1]], axis=1)
-            masks.append(np.concatenate([np.zeros((1, self.max_length - tlen)), np.ones((1, tlen))], axis=1))
+            actions[-1] = np.concatenate([np.ones((1, max_length - tlen, self.act_dim)) * -10, actions[-1]], axis=1)
+            next_observations[-1] = np.concatenate([np.zeros((1, max_length - ntlen, self.obs_dim)), next_observations[-1]], axis=1)
+            next_observations[-1] = (next_observations[-1] - self.obs_mean) / self.obs_std
+            rewards[-1] = np.concatenate([np.zeros((1, max_length - tlen, 1)), rewards[-1]], axis=1)
+            dones[-1] = np.concatenate([np.ones((1, max_length - tlen)) * 2, dones[-1]], axis=1)
+            returns_to_go[-1] = np.concatenate([np.zeros((1, max_length - tlen, 1)), returns_to_go[-1]], axis=1) / self.scale
+            timesteps[-1] = np.concatenate([np.zeros((1, max_length - tlen)), timesteps[-1]], axis=1)
+            masks.append(np.concatenate([np.zeros((1, max_length - tlen)), np.ones((1, tlen))], axis=1))
         
         data = (
             np.concatenate(observations, axis=0).astype(np.float32),
             np.concatenate(actions, axis=0).astype(np.float32),
+            np.concatenate(next_observations, axis=0).astype(np.float32),
             np.concatenate(rewards, axis=0).astype(np.float32),
             np.concatenate(dones, axis=0).astype(np.int32),
             np.concatenate(returns_to_go, axis=0)[:,:-1].astype(np.float32),
@@ -622,6 +627,7 @@ class TrajectoryBuffer(BaseBuffer):
         data = (
             observations.reshape(batch_size, -1, observations.shape[-1]).astype(np.float32),
             actions.reshape(batch_size, -1, actions.shape[-1]).astype(np.float32),
+            None,
             rewards.reshape(batch_size, -1, rewards.shape[-1]).astype(np.float32),
             dones.reshape(batch_size, -1).astype(np.int32),
             returns_to_go[:,:-1,:].reshape(batch_size, -1, returns_to_go.shape[-1]).astype(np.float32),
@@ -649,6 +655,7 @@ class MTTrajectoryBuffer(BaseBuffer):
         prompt_episode: int = 1,
         prompt_length: int = None,
         buffer_size: int = None,
+        total_mean: bool = True,
         observation_space: spaces.Space = None,
         action_space: spaces.Space = None,
         n_envs: int = 1, # Not used
@@ -662,19 +669,21 @@ class MTTrajectoryBuffer(BaseBuffer):
         self.prompt_episode = prompt_episode
         self.prompt_length = prompt_length
         
+        self.total_mean = total_mean
         self.obs_means, self.obs_stds = [], []
 
     @property
     def buffers(self):
         return self._buffers
 
-    def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
+    def sample(self, batch_size: int, max_length: int = None, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
         # sample batch_size per task
-        observations, actions, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], []
+        observations, actions, next_observations, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], [], []
         for buff in self.buffers:
-            samples = buff.sample(batch_size)
+            samples = buff.sample(batch_size, max_length)
             observations.append(samples.observations)
             actions.append(samples.actions)
+            next_observations.append(samples.next_observations)
             rewards.append(samples.rewards)
             dones.append(samples.dones)
             returns_to_go.append(samples.returns_to_go)
@@ -685,6 +694,7 @@ class MTTrajectoryBuffer(BaseBuffer):
         data = (
             jnp.concatenate(observations),
             jnp.concatenate(actions),
+            jnp.concatenate(next_observations),
             jnp.concatenate(rewards),
             jnp.concatenate(dones),
             jnp.concatenate(returns_to_go),
@@ -713,6 +723,7 @@ class MTTrajectoryBuffer(BaseBuffer):
         data = (
             jnp.concatenate(observations),
             jnp.concatenate(actions),
+            None,
             jnp.concatenate(rewards),
             jnp.concatenate(dones),
             jnp.concatenate(returns_to_go),
@@ -739,8 +750,8 @@ class MTTrajectoryBuffer(BaseBuffer):
         ))
         self.obs_means.append(self.buffers[-1].obs_mean)
         self.obs_stds.append(self.buffers[-1].obs_std)
-    
-    def set_avg_obs(self, obs_mean: np.ndarray, obs_std: np.ndarray):
+        
+    def set_total_mean(self, obs_mean: np.ndarray, obs_std: np.ndarray):
         self.obs_means, self.obs_stds = [], []
         for buff in self.buffers:
             buff.obs_mean = obs_mean

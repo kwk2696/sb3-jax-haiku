@@ -41,6 +41,7 @@ class ReplayBufferSamples(NamedTuple):
 class TrajectoryBufferSamples(NamedTuple):
     observations: jnp.ndarray
     actions: jnp.ndarray
+    next_observations: jnp.ndarray
     rewards: jnp.ndarray
     dones: jnp.ndarray
     returns_to_go: jnp.ndarray

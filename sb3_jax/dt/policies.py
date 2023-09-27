@@ -215,7 +215,7 @@ class DTPolicy(BasePolicy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        lr_schedule: Schedule,
+        lr_schedule: Union[float, Schedule],
         max_grad_norm: float = .25,
         num_tasks: int = None,
         prompt_type: str = None,
@@ -355,10 +355,15 @@ class DTPolicy(BasePolicy):
                     np.repeat(np.zeros((1,))[None, ...].astype(np.float32), self.num_tasks, axis=0)) if self.prompt_type == 'fix' else None,
             deterministic=False,
         )
-        # TODO: optimizer with LambdaLR scheduler
-        def fn_lr_scheduler(lr):
-            return lr
-        self.optimizer = self.optimizer_class(learning_rate=fn_lr_scheduler(lr_schedule), **self.optimizer_kwargs)
+        # TODO: optimizer with warmup scheduler
+        def fn_lr_scheduler(init_value: float, warmup_step: float) -> optax._src.base.Schedule:
+            def schedule(count):
+                p = jnp.minimum((count + 1) / warmup_step, 1)
+                return p * init_value
+            return schedule
+        
+        lr_scheduler = fn_lr_scheduler(lr_schedule(None), warmup_step=10000)
+        self.optimizer = self.optimizer_class(learning_rate=lr_scheduler, **self.optimizer_kwargs)
         self.optimizer_state = self.optimizer.init(self.params)
         
     def forward(
@@ -443,16 +448,16 @@ class DTPolicy(BasePolicy):
         
         return observations, actions, rewards, returns_to_go, timesteps, attention_mask
     
-    def set_task_id(self, task_id) -> None:
+    def set_task_id(self, task_id: int) -> None:
         self._task_id = task_id
     
     def get_task_id(self) -> int:
         return self._task_id
 
-    def set_prompt(self, prompt) -> None:
+    def set_prompt(self, prompt: Tuple[jax.Array, ...]) -> None:
         self._prompt = prompt
 
-    def get_prompt(self) -> jnp.array:
+    def get_prompt(self) -> Tuple[jax.Array, ...]:
         return self._prompt
 
     def save(self, path: str) -> None:

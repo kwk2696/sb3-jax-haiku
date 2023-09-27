@@ -9,7 +9,6 @@ import optax
 import numpy as np
 import haiku as hk
 import jax.numpy as jnp
-from jax import random
 from jax import nn
 
 from sb3_jax.common.jax_layers import (
@@ -285,12 +284,14 @@ class DiffusionModel(hk.Module):
         du: hk.Module,
         n_denoise: int,
         ddpm_dict: DDPMCoefficients,
+        denoise_type: str = 'ddpm',
     ):
         super().__init__()
         self.du = du 
 
         self.n_denoise = n_denoise
-        self.noise_dim = self.du.noise_dim
+        self.noise_dim = self.du.noise_dim if isinstance(self.du.noise_dim, tuple) else (self.du.noise_dim,)
+        self.denoise_type = denoise_type
         
         # scheduler params
         self.alpha_t = ddpm_dict.alpha_t
@@ -313,7 +314,7 @@ class DiffusionModel(hk.Module):
         # denoising chain
         if denoise:
             # sample initial noise, y_T ~ N(0, 1)
-            y_i = jax.random.normal(hk.next_rng_key(), shape=(n_batch, self.noise_dim))
+            y_i = jax.random.normal(hk.next_rng_key(), shape=(n_batch,) + self.noise_dim)
             # trace denoised outputs
             y_i_trace = dict()
             y_i_trace[self.n_denoise] = (y_i, None)
@@ -321,9 +322,17 @@ class DiffusionModel(hk.Module):
             for i in range(self.n_denoise, 0, -1):
                 t_i = jnp.array([[i / self.n_denoise]])
                 t_i = jnp.repeat(t_i, n_batch, axis=0)
-                noise = random.normal(hk.next_rng_key(), shape=(n_batch, self.noise_dim)) if i > 1 else 0
+                noise = jax.random.normal(hk.next_rng_key(), shape=(n_batch,) + self.noise_dim) if i > 1 else 0
                 eps = self.du(y_i, x, t_i)
-                y_i = self.oneover_sqrta[i] * (y_i - self.ma_over_sqrtmab_inv[i] * eps) + self.sqrt_beta_t[i] * noise
+
+                # ddpm generative process
+                if self.denoise_type == 'ddpm':
+                    y_i = self.oneover_sqrta[i] * (y_i - self.ma_over_sqrtmab_inv[i] * eps) + self.sqrt_beta_t[i] * noise
+                # ddim generative process, need to implement sigma
+                elif self.denoise_type == 'ddim':
+                    pred_y_0 = (y_i - self.sqrtmab[i] * eps) / self.sqrtab[i] # prediction of denoised y_0
+                    y_i = self.sqrtab[i-1] * pred_y_0 + self.sqrtmab[i-1] * eps 
+
                 y_i_trace[i-1] = (y_i, eps) # action, eps
             return y_i, y_i_trace
         return self.du(y_t, x, t)
@@ -343,7 +352,7 @@ class DUPolicy(BasePolicy):
         lr_schedule: Schedule,
         net_arch: Optional[List[int]] = None, 
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.leaky_relu,
-        policy_type: str = 'mlp',
+        policy_type: str = 'ddpm_mlp',
         embed_dim: int = 128,
         hidden_dim: int = 512,
         n_heads: int = 4, # for transformer
@@ -377,8 +386,8 @@ class DUPolicy(BasePolicy):
         if net_arch is None:
             net_arch = [64, 64]
         
-        self.policy_type = policy_type
-        assert policy_type in DUPolicy.supported_policies, f"{policy_type} is not supported diffusion policy."
+        self.denoise_type, self.net_type = policy_type.split('_')
+        assert self.net_type in DUPolicy.supported_policies, f"{self.net_type} is not supported diffusion policy."
         self.net_arch = net_arch
         self.noise_dim = action_space.shape[-1] # noise dim is size of action
         self.embed_dim = embed_dim
@@ -414,7 +423,7 @@ class DUPolicy(BasePolicy):
         return data
 
     def _build_actor(self) -> hk.Module:
-        if self.policy_type == "mlp":
+        if self.net_type == "mlp":
             du = MLPDiffusionModel(
                 embed_dim=self.embed_dim,
                 hidden_dim=self.hidden_dim,
@@ -422,7 +431,7 @@ class DUPolicy(BasePolicy):
                 net_arch=self.net_arch,
                 activation_fn=self.activation_fn,
             )
-        elif self.policy_type == "transformer":
+        elif self.net_type == "transformer":
             du = TFDiffusionModel(
                 n_heads=self.n_heads,
                 embed_dim=self.embed_dim, 
@@ -437,7 +446,8 @@ class DUPolicy(BasePolicy):
         return DiffusionModel(
             du=du,
             n_denoise=self.n_denoise,
-            ddpm_dict=self.ddpm_dict
+            ddpm_dict=self.ddpm_dict,
+            denoise_type=self.denoise_type,
         )
 
     def _build(self, lr_schedule: Schedule) -> None:
@@ -450,7 +460,7 @@ class DUPolicy(BasePolicy):
             return actor(y_t, observation, t, denoise)
 
         params, self.actor = hk.transform_with_state(fn_actor)
-        dummy_y_t = random.normal(next(self.rng), shape=(1, self.noise_dim))
+        dummy_y_t = jax.random.normal(next(self.rng), shape=(1, self.noise_dim))
         dummy_t = jnp.array([[1 / self.n_denoise]])
         self.params, self.state = params(next(self.rng), dummy_y_t, get_dummy_obs(self.observation_space), dummy_t, denoise=False)
         self.optimizer = self.optimizer_class(learning_rate=lr_schedule, **self.optimizer_kwargs)
@@ -472,7 +482,7 @@ class DUPolicy(BasePolicy):
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
         return self.actor(params, state, rng, y_t, observation, t, denoise=False)
     
-    # for denoise option
+    # for denoise
     @partial(jax.jit, static_argnums=0)
     def _actor_denoise(
         self,

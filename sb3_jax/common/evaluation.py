@@ -114,6 +114,7 @@ def evaluate_traj_policy(
     obs_std: float = 0.0,
     scale: float = 1000.,
     target_return: float = None,
+    use_traj_obs: bool = True,
     return_episode_rewards: bool = False,
     return_episode_infos: bool = False,
     random_action: bool = False,
@@ -154,7 +155,10 @@ def evaluate_traj_policy(
             if random_action:
                 action = env.action_space.sample()
             else:
-                action, _, info = model.predict(traj_obs, deterministic=deterministic)
+                if use_traj_obs:
+                    action, _, info = model.predict(traj_obs, deterministic=deterministic)
+                else:
+                    action, _, info = model.predict(traj_obs['observations'][-1:,], deterministic=deterministic)
                 actions[-1] = action
             
             observation, reward, done, _ = env.step(action)
