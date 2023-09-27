@@ -216,6 +216,7 @@ class DTPolicy(BasePolicy):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         lr_schedule: Union[float, Schedule],
+        lr_warmup: float = 0, # for lr scheduler
         max_grad_norm: float = .25,
         num_tasks: int = None,
         prompt_type: str = None,
@@ -254,6 +255,7 @@ class DTPolicy(BasePolicy):
             squash_output=squash_output,
             seed=seed,
         )
+        self.lr_warmup = lr_warmup
 
         self.num_tasks = num_tasks
         self.prompt_type = prompt_type
@@ -355,14 +357,14 @@ class DTPolicy(BasePolicy):
                     np.repeat(np.zeros((1,))[None, ...].astype(np.float32), self.num_tasks, axis=0)) if self.prompt_type == 'fix' else None,
             deterministic=False,
         )
-        # TODO: optimizer with warmup scheduler
+        # TODO: optimizer with warmup scheduler, small -> large 
         def fn_lr_scheduler(init_value: float, warmup_step: float) -> optax._src.base.Schedule:
             def schedule(count):
-                p = jnp.minimum((count + 1) / warmup_step, 1)
+                p = jnp.minimum((count + 1) / (warmup_step + 1), 1)
                 return p * init_value
             return schedule
         
-        lr_scheduler = fn_lr_scheduler(lr_schedule(None), warmup_step=10000)
+        lr_scheduler = fn_lr_scheduler(lr_schedule(None), warmup_step=self.lr_warmup)
         self.optimizer = self.optimizer_class(learning_rate=lr_scheduler, **self.optimizer_kwargs)
         self.optimizer_state = self.optimizer.init(self.params)
         

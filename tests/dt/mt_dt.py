@@ -66,8 +66,9 @@ def main(args):
             learning_rate=1e-4,
             batch_size=128,
             verbose=1,
-            wandb_log=f'test/dt_mt/{type}',
+            wandb_log=f'test/dt_mt/{args.type}',
             policy_kwargs=dict(
+                lr_warmup=0,
                 num_tasks=len(envs),
                 prompt_type=args.type,
                 prompt_length=prompt_length,

@@ -103,6 +103,7 @@ def main(args):
             verbose=1,
             wandb_log=f'halfcheetah-vel-task{len(train_envs)}',
             policy_kwargs=dict(
+                lr_warmup=10000,
                 num_tasks=len(train_envs),
                 prompt_type=args.type,
                 prompt_length=prompt_length,

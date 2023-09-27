@@ -60,8 +60,9 @@ def main(args):
             learning_rate=1e-4,
             batch_size=256,
             verbose=1,
-            wandb_log=f'test/dt_st/{type}',
+            wandb_log=f'test/dt_st/{args.type}',
             policy_kwargs=dict(
+                lr_warmup=0,
                 num_tasks=1,
                 prompt_type=args.type,
                 prompt_length=prompt_length,
