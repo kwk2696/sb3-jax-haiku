@@ -4,6 +4,7 @@ os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
 import argparse
 import gym
 import pickle
+import time
 from mujoco_control_envs.mujoco_control_envs import HalfCheetahDirEnv
 
 from stable_baselines3.common import env_util, vec_env
@@ -49,6 +50,11 @@ def main(args):
         observation_space=obs_space,
         action_space=act_space,
     )
+    start = time.time()
+    buff.sample(batch_size=32)
+    end = time.time()
+    print(f"Sampling time: {end - start}")
+    buff.sample(batch_size=32)
 
     if args.train:
         print_y("<< Training DT (single-task) Model >>")

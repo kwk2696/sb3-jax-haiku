@@ -1,5 +1,6 @@
 import warnings
 import pickle
+import time
 from abc import ABC, abstractmethod
 from functools import partial
 from typing import Any, Dict, Generator, List, Optional, Union
@@ -78,6 +79,7 @@ class BaseBuffer(ABC):
     ) -> Union[RolloutBufferSamples]:
         raise NotImplementedError()
     
+    # @partial(jax.jit, static_argnums=0)
     def to_jnp(self, array: np.ndarray, copy: bool = True) -> jnp.ndarray:
         """Convert a numpy array to a jax numpy array."""
         return jnp.array(array)
@@ -533,7 +535,7 @@ class TrajectoryBuffer(BaseBuffer):
     def _get_samples(self, batch_inds: np.ndarray, max_length: int = None, env: Optional[VecNormalize] = None) -> TrajectoryBufferSamples:
         observations, actions, next_observations, rewards, dones, returns_to_go, timesteps, masks = [], [], [], [], [], [], [], []
         if max_length is None: max_length = self.max_length
-
+    
         for i in range(len(batch_inds)):
             traj = self.trajectories[int(self.sorted_inds[batch_inds[i]])]
             si = np.random.randint(0, traj['rewards'].shape[0] - 1)
@@ -563,7 +565,7 @@ class TrajectoryBuffer(BaseBuffer):
             returns_to_go[-1] = np.concatenate([np.zeros((1, max_length - tlen, 1)), returns_to_go[-1]], axis=1) / self.scale
             timesteps[-1] = np.concatenate([np.zeros((1, max_length - tlen)), timesteps[-1]], axis=1)
             masks.append(np.concatenate([np.zeros((1, max_length - tlen)), np.ones((1, tlen))], axis=1))
-        
+
         data = (
             np.concatenate(observations, axis=0).astype(np.float32),
             np.concatenate(actions, axis=0).astype(np.float32),
@@ -669,6 +671,9 @@ class MTTrajectoryBuffer(BaseBuffer):
         self.prompt_episode = prompt_episode
         self.prompt_length = prompt_length
         
+        self.total_num_trajectories = 0
+        self.total_num_timesteps = 0
+
         self.total_mean = total_mean
         self.obs_means, self.obs_stds = [], []
 
@@ -750,6 +755,9 @@ class MTTrajectoryBuffer(BaseBuffer):
         ))
         self.obs_means.append(self.buffers[-1].obs_mean)
         self.obs_stds.append(self.buffers[-1].obs_std)
+
+        self.total_num_trajectories += self.buffers[-1].num_trajectories
+        self.total_num_timesteps += self.buffers[-1].num_timesteps
         
     def set_total_mean(self, obs_mean: np.ndarray, obs_std: np.ndarray):
         self.obs_means, self.obs_stds = [], []

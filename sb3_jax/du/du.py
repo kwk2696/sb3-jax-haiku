@@ -10,7 +10,7 @@ import haiku as hk
 from gym import spaces
 
 from sb3_jax.common.offline_algorithm import OfflineAlgorithm
-from sb3_jax.common.buffers import BaseBuffer, OfflineBuffer
+from sb3_jax.common.buffers import BaseBuffer, OfflineBuffer 
 from sb3_jax.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from sb3_jax.common.jax_utils import stop_grad, jit_optimize_with_state
 from sb3_jax.common.policies import BasePolicy
@@ -66,11 +66,9 @@ class DU(OfflineAlgorithm):
         
         for gradient_step in range(gradient_steps):
             replay_data = self.replay_buffer.sample(batch_size)
-
+            
             observations = self.policy.preprocess(replay_data.observations, training=True)
             actions = replay_data.actions
-            if isinstance(self.action_space, spaces.Discrete):
-                actions = actions.squeeze()
 
             self.policy.optimizer_state, self.policy.params, self.policy.state, loss, info = jit_optimize_with_state(
                 self._loss,
