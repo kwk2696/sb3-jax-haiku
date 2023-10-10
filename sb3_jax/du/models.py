@@ -54,8 +54,9 @@ class DiffusionBetaScheduler:
         alpha_t = 1. - beta_t
         log_alpha_t = jnp.log(alpha_t)
         alpha_bar_t = jnp.exp(jnp.cumsum(log_alpha_t, axis=0))  # = alphas_cumprod
-        alpha_bar_prev_t = jnp.concatenate([jnp.array([1]), alpha_bar_t[:-1]])
-
+        # TODO: make sure the prev_t ...
+        alpha_bar_prev_t = jnp.concatenate([jnp.ones((2,)), alpha_bar_t[1:-1]]) # beta_t[0], beta_t[1] set as 1
+        
         # calcuations for forward q(x_t | x_{t-1}), backward q(x_{t-1} | x_t)
         sqrtab = jnp.sqrt(alpha_bar_t)
         oneover_sqrta = 1. / jnp.sqrt(alpha_t)
@@ -87,29 +88,24 @@ class DiffusionBetaScheduler:
         )
 
     def linear_schedule(self) -> jnp.ndarray:
-        beta_t = (self.beta2 - self.beta1) \
-                 * jnp.arange(-1, self.total_denoise_steps, dtype=jnp.float32) \
-                 / (self.total_denoise_steps - 1) \
-                 + self.beta1
+        beta_t = (self.beta2 - self.beta1) * jnp.arange(-1, self.total_denoise_steps, dtype=jnp.float32) \
+                 / (self.total_denoise_steps - 1) + self.beta1
+        # modifying this so that beta_t[1] = beta1, and beta_t[n_T] = beta2, while beta_t[0] never used
         beta_t = beta_t.at[0].set(self.beta1)
-
         return beta_t
-
+    
     def cosine_schedule(self):
         s = 8e-3
-        timesteps = jnp.arange(self.total_denoise_steps + 1, dtype=jnp.float32)
-        x = (((timesteps / self.total_denoise_steps) + s) / (1 + s)) * (jnp.pi / 2)
-        f_t = jnp.cos(x) ** 2
-
-        x_0 = (s / (1 + s)) * (jnp.pi / 2)
-        f_0 = jnp.cos(x_0) ** 2
-
-        alpha_bar_t = f_t / f_0
-
-        beta_t = 1 - alpha_bar_t[1:] / alpha_bar_t[: -1]
+        steps = self.total_denoise_steps + 1
+        x = jnp.linspace(0, steps, steps)
+        alpha_bar_t = jnp.cos(((x / steps) + s) / (1 + s) * jnp.pi * 0.5)**2
+        alpha_bar_t = alpha_bar_t / alpha_bar_t[0]
+        beta_t = 1 - (alpha_bar_t[1:] / alpha_bar_t[:-1])
+        # beta_t[0] never used
+        beta_t = jnp.concatenate([jnp.array([1]), beta_t])
         beta_t = jnp.clip(beta_t, a_min=0, a_max=0.999)
-
         return beta_t
+
 
 # ==================== Diffusion Models  ==================== # 
 
@@ -340,7 +336,7 @@ class DiffusionModel(hk.Module):
                 # ddpm generative process
                 if self.denoise_type == 'ddpm':
                     y_i = self.oneover_sqrta[i] * (y_i - self.ma_over_sqrtmab_inv[i] * eps) + self.sqrt_beta_t[i] * noise
-                # TODO: ddim generative process, need to implement noise part
+                # TODO: ddim generative process, need to implement noise part & prev scheduler
                 elif self.denoise_type == 'ddim':
                     # prediction of y_0
                     pred_y_0 = (y_i - self.sqrtmab[i] * eps) / self.sqrtab[i]
