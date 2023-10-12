@@ -1,7 +1,8 @@
 """MLP/Transformer Diffusion Model"""
 from dataclasses import dataclass
-from typing import Any, Tuple, NamedTuple, List, Dict, Type, Optional, Callable
+from typing import Any, Tuple, NamedTuple, Union, List, Dict, Type, Optional, Callable
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 from jax import nn
@@ -102,8 +103,8 @@ class DiffusionBetaScheduler:
         alpha_bar_t = alpha_bar_t / alpha_bar_t[0]
         beta_t = 1 - (alpha_bar_t[1:] / alpha_bar_t[:-1])
         # beta_t[0] never used
-        beta_t = jnp.concatenate([jnp.array([1]), beta_t])
         beta_t = jnp.clip(beta_t, a_min=0, a_max=0.999)
+        beta_t = jnp.concatenate([jnp.array([0]), beta_t])
         return beta_t
 
 
@@ -114,14 +115,14 @@ class BaseDiffusionModel(hk.Module):
         self,
         embed_dim: int,
         hidden_dim: int,
-        noise_dim: int, 
+        noise_dim: Union[int, Tuple[int]], 
         net_arch: Optional[List[int]] = None, 
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.gelu,
     ):
         super().__init__()
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
-        self.noise_dim = noise_dim
+        self.noise_dim = np.prod(noise_dim) if isinstance(noise_dim, tuple) else noise_dim
         self.net_arch = net_arch
         self.activation_fn = activation_fn
 

@@ -28,3 +28,7 @@ print(cosine_dict.ma_over_sqrtmab_inv)
 print_y("sqrt(b)")
 print(linear_dict.sqrt_beta_t)
 print(cosine_dict.sqrt_beta_t)
+
+print_y("="*50)
+print(linear_dict.sqrtab)
+print(linear_dict.sqrtmab)

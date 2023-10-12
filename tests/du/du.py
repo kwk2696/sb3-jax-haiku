@@ -53,7 +53,7 @@ def main(args):
 
         mean_reward, _ = evaluate_policy(du, env_eval, n_eval_episodes=10, max_ep_length=500)
         print(f"Before Learning: {mean_reward:.3f}")
-        du.learn(total_timesteps=100_000, log_interval=1000)
+        du.learn(total_timesteps=10_000, log_interval=1000)
         mean_reward, _ = evaluate_policy(du, env_eval, n_eval_episodes=10, max_ep_length=500)
         print(f"After Learning: {mean_reward:.3f}")
         du.save(path='./tests/model/du')
