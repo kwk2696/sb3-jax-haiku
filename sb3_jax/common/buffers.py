@@ -465,6 +465,7 @@ class TrajectoryBuffer(BaseBuffer):
             traj_lengths.append(len(path['observations']))
             returns.append(path['rewards'].sum())
         traj_lengths, returns = np.array(traj_lengths), np.array(returns)
+        self.traj_lengths = traj_lengths
 
         observations = np.concatenate(observations, axis=0)
         self.obs_mean, self.obs_std = np.mean(observations, axis=0), np.std(observations, axis=0) + 1e-6
@@ -651,6 +652,7 @@ class MTTrajectoryBuffer(BaseBuffer):
 
     def __init__(
         self,
+        buff_cls: BaseBuffer,
         max_length: int,
         max_ep_length: int,
         scale: float,
@@ -663,6 +665,7 @@ class MTTrajectoryBuffer(BaseBuffer):
         n_envs: int = 1, # Not used
     ):
         super(MTTrajectoryBuffer, self).__init__(buffer_size, observation_space, action_space)
+        self.buff_cls = buff_cls if buff_cls is not None else TrajectoryBuffer
         self._buffers = []
         self.max_length = max_length
         self.max_ep_length = max_ep_length
@@ -742,7 +745,7 @@ class MTTrajectoryBuffer(BaseBuffer):
         trajectories: Dict[str, np.ndarray], 
         prompt_trajectories: Optional[Dict[str, np.ndarray]] = None
     ) -> None:
-        self.buffers.append(TrajectoryBuffer(
+        self.buffers.append(self.buff_cls(
             trajectories,
             self.max_length,
             self.max_ep_length,
