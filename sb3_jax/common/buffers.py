@@ -459,16 +459,18 @@ class TrajectoryBuffer(BaseBuffer):
 
     def setup(self) -> None:
         # 1. traj setup
-        observations, traj_lengths, returns = [], [], []
+        observations, actions, traj_lengths, returns = [], [], [], []
         for path in self.trajectories:
             observations.append(path['observations'])
+            actions.append(path['actions'])
             traj_lengths.append(len(path['observations']))
             returns.append(path['rewards'].sum())
         traj_lengths, returns = np.array(traj_lengths), np.array(returns)
         self.traj_lengths = traj_lengths
 
-        observations = np.concatenate(observations, axis=0)
+        observations, actions = np.concatenate(observations, axis=0), np.concatenate(actions, axis=0)
         self.obs_mean, self.obs_std = np.mean(observations, axis=0), np.std(observations, axis=0) + 1e-6
+        self.act_mean, self.act_std = np.mean(actions, axis=0), np.std(actions, axis=0) + 1e-6
         num_timesteps = sum(traj_lengths)
         
         print('=' * 50)
@@ -762,10 +764,18 @@ class MTTrajectoryBuffer(BaseBuffer):
         self.total_num_trajectories += self.buffers[-1].num_trajectories
         self.total_num_timesteps += self.buffers[-1].num_timesteps
         
-    def set_total_mean(self, obs_mean: np.ndarray, obs_std: np.ndarray):
-        self.obs_means, self.obs_stds = [], []
+    def set_total_mean(self) -> None:
+        
+        total_obs, total_act = [], []
         for buff in self.buffers:
-            buff.obs_mean = obs_mean
-            buff.obs_std = obs_std
-            self.obs_means.append(buff.obs_mean)
-            self.obs_stds.append(buff.obs_std)
+            for traj in buff.trajectories:
+                total_obs.extend(traj['observations'])
+                total_act.extend(traj['actions'])
+        total_obs_mean, total_obs_std = np.mean(total_obs, axis=0), np.std(total_obs, axis=0) + 1e-6
+        total_act_mean, total_act_std = np.mean(total_act, axis=0), np.std(total_act, axis=0) + 1e-6
+
+        for buff in self.buffers:
+            buff.obs_mean = total_obs_mean
+            buff.obs_std = total_obs_std
+            buff.act_mean = total_act_mean
+            buff.act_std = total_act_std
