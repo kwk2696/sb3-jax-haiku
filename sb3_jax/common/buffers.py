@@ -473,11 +473,11 @@ class TrajectoryBuffer(BaseBuffer):
         self.act_mean, self.act_std = np.mean(actions, axis=0), np.std(actions, axis=0) + 1e-6
         num_timesteps = sum(traj_lengths)
         
-        print('=' * 50)
+        print('=' * 20, " total  traj ", '=' * 20)
         print(f'{len(traj_lengths)} trajectories, {num_timesteps} timesteps found')
         print(f'Average return: {np.mean(returns):.2f}, std: {np.std(returns):.2f}')
-        print(f'Max return: {np.max(returns):.2f}, std: {np.min(returns):.2f}')
-        print('=' * 50)
+        print(f'Max return: {np.max(returns):.2f}, Min return: {np.min(returns):.2f}')
+        print('=' * 55)
 
         # only train on top pct_traj trajectories
         pct_traj = 1.
@@ -505,6 +505,13 @@ class TrajectoryBuffer(BaseBuffer):
             traj_lengths.append(len(path['observations']))
             returns.append(path['rewards'].sum())
         traj_lengths, returns = np.array(traj_lengths), np.array(returns)
+        self.prompt_traj_lengths = traj_lengths
+
+        print('=' * 20, " prompt traj ", '=' * 20)
+        print(f'{len(traj_lengths)} trajectories, {num_timesteps} timesteps found')
+        print(f'Average return: {np.mean(returns):.2f}, std: {np.std(returns):.2f}')
+        print(f'Max return: {np.max(returns):.2f}, Min return: {np.min(returns):.2f}')
+        print('=' * 55)
 
         observations = np.concatenate(observations, axis=0)
         num_timesteps = sum(traj_lengths)
