@@ -448,7 +448,7 @@ class BaseAlgorithm(ABC):
             verbose=1, 
             print_system_info=print_system_info,
         )
-
+        print(kwargs)
         if "policy_kwargs" in kwargs and kwargs["policy_kwargs"] != data["policy_kwargs"]:
             raise ValueError(
                 f"The specified policy kwargs do not equal the stored policy kwargs."
@@ -481,7 +481,7 @@ class BaseAlgorithm(ABC):
         
         # load parameters
         model.__dict__.update(data)
-        model.__dict__.update(kwargs)
+        model.__dict__.update(kwargs['kwargs'])
         model._setup_model()
 
         # put state_dicts back in place
