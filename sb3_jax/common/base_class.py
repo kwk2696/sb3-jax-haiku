@@ -481,7 +481,8 @@ class BaseAlgorithm(ABC):
         
         # load parameters
         model.__dict__.update(data)
-        model.__dict__.update(kwargs['kwargs'])
+        if 'kwargs' in kwargs:
+            model.__dict__.update(kwargs['kwargs'])
         model._setup_model()
 
         # put state_dicts back in place
