@@ -126,7 +126,10 @@ class DU(OfflineAlgorithm):
         noise_pred, new_state = self.policy._actor(y_t, observations, _ts / self.policy.n_denoise, params, state, rng_a)
 
         # return mse between predicted and true noise
-        loss = jnp.mean(jnp.square(noise - noise_pred))
+        if self.policy.predict_epsilon:
+            loss = jnp.mean(jnp.square(noise_pred - noise))
+        else:
+            loss = jnp.mean(jnp.square(noise_pred - actions))
         info = {
             'actor_loss': loss
         }

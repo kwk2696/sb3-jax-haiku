@@ -40,6 +40,7 @@ def main(args):
             wandb_log=f'test/du/{args.type}',
             policy_kwargs=dict(
                 policy_type=args.type,
+                predict_epsilon=False,
                 net_arch=[128]*3,
                 embed_dim=64,
                 hidden_dim=128,

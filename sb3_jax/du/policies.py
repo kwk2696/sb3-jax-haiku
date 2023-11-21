@@ -36,6 +36,7 @@ class DUPolicy(BasePolicy):
         net_arch: Optional[List[int]] = None, 
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = nn.leaky_relu,
         policy_type: str = 'ddpm_mlp',
+        predict_epsilon: bool = True,
         embed_dim: int = 128,
         hidden_dim: int = 512,
         n_heads: int = 4, # for transformer
@@ -71,6 +72,8 @@ class DUPolicy(BasePolicy):
         
         self.denoise_type, self.net_type = policy_type.split('_')
         assert self.net_type in DUPolicy.supported_policies, f"{self.net_type} is not supported diffusion policy."
+        self.predict_epsilon = predict_epsilon
+
         self.net_arch = net_arch
         self.noise_dim = action_space.shape[-1] # noise dim is size of action
         self.embed_dim = embed_dim
@@ -91,6 +94,9 @@ class DUPolicy(BasePolicy):
             dict(
                 observation_space=self.observation_space,
                 action_space=self.action_space,
+                denoise_type=self.denoise_type,
+                net_type=self.net_type,
+                predict_epsilon=self.predict_epsilon,
                 noise_dim=self.noise_dim,
                 embed_dim=self.embed_dim,
                 hidden_dim=self.hidden_dim,
@@ -131,6 +137,7 @@ class DUPolicy(BasePolicy):
             n_denoise=self.n_denoise,
             ddpm_dict=self.ddpm_dict,
             denoise_type=self.denoise_type,
+            predict_epsilon=self.predict_epsilon,
         )
 
     def _build(self, lr_schedule: Schedule) -> None:

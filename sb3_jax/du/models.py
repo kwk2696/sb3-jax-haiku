@@ -92,7 +92,7 @@ class DiffusionBetaScheduler:
         beta_t = (self.beta2 - self.beta1) * jnp.arange(-1, self.total_denoise_steps, dtype=jnp.float32) \
                  / (self.total_denoise_steps - 1) + self.beta1
         # modifying this so that beta_t[1] = beta1, and beta_t[n_T] = beta2, while beta_t[0] never used
-        beta_t = beta_t.at[0].set(self.beta1)
+        beta_t = beta_t.at[0].set(0)
         return beta_t
     
     def cosine_schedule(self):
@@ -289,6 +289,7 @@ class DiffusionModel(hk.Module):
         n_denoise: int,
         ddpm_dict: DDPMCoefficients,
         denoise_type: str = 'ddpm',
+        predict_epsilon: bool = True,
     ):
         super().__init__()
         self.du = du 
@@ -296,6 +297,7 @@ class DiffusionModel(hk.Module):
         self.n_denoise = n_denoise
         self.noise_dim = self.du.noise_dim if isinstance(self.du.noise_dim, tuple) else (self.du.noise_dim,)
         self.denoise_type = denoise_type
+        self.predict_epsilon = predict_epsilon
         
         # scheduler params
         self.alpha_t = ddpm_dict.alpha_t
@@ -309,7 +311,7 @@ class DiffusionModel(hk.Module):
         self.posterior_log_beta = ddpm_dict.posterior_log_beta
         self.posterior_mean_coef1 = ddpm_dict.posterior_mean_coef1
         self.posterior_mean_coef2 = ddpm_dict.posterior_mean_coef2
-
+    
     def __call__(
         self,
         y_t: jax.Array, # y for noise
@@ -336,7 +338,11 @@ class DiffusionModel(hk.Module):
                 
                 # ddpm generative process
                 if self.denoise_type == 'ddpm':
-                    y_i = self.oneover_sqrta[i] * (y_i - self.ma_over_sqrtmab_inv[i] * eps) + self.sqrt_beta_t[i] * noise
+                    if self.predict_epsilon:
+                        y_i = self.oneover_sqrta[i] * (y_i - self.ma_over_sqrtmab_inv[i] * eps) + self.sqrt_beta_t[i] * noise
+                    else:
+                        y_i = self.posterior_mean_coef1[i] * eps + self.posterior_mean_coef2[i] * y_i \
+                                + jnp.exp(0.5 * self.posterior_log_beta[i]) * noise
                 # TODO: ddim generative process, need to implement noise part & prev scheduler
                 elif self.denoise_type == 'ddim':
                     # prediction of y_0
