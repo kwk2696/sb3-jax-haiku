@@ -2,13 +2,13 @@ from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, Callable
 import copy
 
-import gym
+import wandb
 import jax
-import optax
 import numpy as np
-import haiku as hk
 import jax.numpy as jnp
-from jax import nn
+import haiku as hk
+from gym import spaces
+import optax
 
 from sb3_jax.common.off_policy_algorithm import OffPolicyAlgorithm
 from sb3_jax.sac.policies import SACPolicy
@@ -86,7 +86,7 @@ class SAC(OffPolicyAlgorithm):
             sde_sample_freq=sde_sample_freq,
             use_sde_at_warmup=use_sde_at_warmup,
             optimize_memory_usage=optimize_memory_usage,
-            supported_action_spaces=(gym.spaces.Box),
+            supported_action_spaces=(spaces.Box),
         )
 
         self.target_entropy = target_entropy
@@ -218,13 +218,13 @@ class SAC(OffPolicyAlgorithm):
         self.logger.record("train/n_updates", self._n_updates, exclude="tensorboard")
         
         if self.wandb_log is not None:
-            wandb_log({
-                "train/n_updates", self._n_updates,
-                "train/actor_loss", np.mean(actor_losses),
-                "train/critic_loss", np.mean(critic_losses),
-                "train/ent_coef_loss", np.mean(ent_coef_losses),
-                "train/ent_coef", np.mean(ent_coefs),
-                "train/log_prob", actor_info['log_prob'].mean()
+            wandb.log({
+                # "train/n_updates", self._n_updates,
+                "train/actor_loss": np.mean(actor_losses),
+                "train/critic_loss": np.mean(critic_losses),
+                "train/ent_coef_loss": np.mean(ent_coef_losses),
+                "train/ent_coef": np.mean(ent_coefs),
+                "train/log_prob": np.mean(actor_info['log_prob'])
             })
 
     @partial(jax.jit, static_argnums=0)
@@ -315,6 +315,46 @@ class SAC(OffPolicyAlgorithm):
             'log_prob': log_prob,
         }
         return actor_loss, info
+    
+    def learn(
+        self,
+        total_timesteps: int,
+        callback: MaybeCallback = None,
+        log_interval: int = 4,
+        eval_env: Optional[GymEnv] = None,
+        eval_freq: int = -1,
+        n_eval_episodes: int = 5,
+        tb_log_name: str = "sac",
+        eval_log_path: Optional[str] = None,
+        reset_num_timesteps: bool = True,
+    ) -> "SAC":
+
+        # wandb configs
+        self.wandb_config = dict(
+            algo='sac',
+            learning_rate=self.learning_rate,
+            batch_size=self.batch_size,
+            tau=self.tau,
+            gamma=self.gamma,
+            train_freq=self.train_freq,
+            gradient_steps=self.gradient_steps,
+            ent_coef=self.ent_coef,
+            target_update_interval=self.target_update_interval,
+            target_entropy=self.target_entropy,
+        )
+        self.wandb_config.update(self.policy._get_constructor_parameters())
+
+        return super(SAC, self).learn(
+            total_timesteps=total_timesteps,
+            callback=callback,
+            log_interval=log_interval,
+            eval_env=eval_env,
+            eval_freq=eval_freq,
+            n_eval_episodes=n_eval_episodes,
+            tb_log_name=tb_log_name,
+            eval_log_path=eval_log_path,
+            reset_num_timesteps=reset_num_timesteps,
+        )
 
     def _save_jax_params(self) -> Dict[str, hk.Params]:
         params_dict = {}

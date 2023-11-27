@@ -25,7 +25,7 @@ pip install -e .
 
 ### Benchmark
 We use Intel i9-10940X, RTX 3090 to benchmark Decision Transformer (DT) on MuJoCo Ant environment.
-| **Name**       | **Torch-DT**        | **JAX-DT**      	  |
+| **Name**       | **sb3-torch**        | **sb3-jax-haiku** |
 |----------------|---------------------| ------------------ |
 | SAC            | 163 step / sec      | 236 step / sec     |
 | DT             | 0.03 step / sec     | 3 step / sec       |
