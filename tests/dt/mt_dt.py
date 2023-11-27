@@ -11,7 +11,7 @@ import numpy as np
 from stable_baselines3.common import env_util, vec_env
 from sb3_jax import DT
 from sb3_jax.dt.policies import MlpPolicy
-from sb3_jax.common.buffers import MTTrajectoryBuffer
+from sb3_jax.common.buffers import TrajectoryBuffer, MTTrajectoryBuffer
 from sb3_jax.common.evaluation import evaluate_traj_policy
 from sb3_jax.common.utils import print_y
 
@@ -34,6 +34,7 @@ def main(args):
 
     # Make Buffer
     buff = MTTrajectoryBuffer(
+        buff_cls=TrajectoryBuffer,
         max_length=20,
         max_ep_length=max_ep_length,
         scale=scale,
@@ -66,7 +67,10 @@ def main(args):
             learning_rate=1e-4,
             batch_size=128,
             verbose=1,
-            wandb_log=f'test/dt_mt/{args.type}',
+            wandb_log=dict(
+                project='sb3-jax-haiku_tests',
+                name=f'dt/mt/{args.type}/cheetah_dir',
+            ),
             policy_kwargs=dict(
                 lr_warmup=0,
                 num_tasks=len(envs),

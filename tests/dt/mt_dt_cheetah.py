@@ -11,7 +11,7 @@ import numpy as np
 from stable_baselines3.common import env_util, vec_env
 from sb3_jax import DT
 from sb3_jax.dt.policies import MlpPolicy
-from sb3_jax.common.buffers import MTTrajectoryBuffer
+from sb3_jax.common.buffers import TrajectoryBuffer, MTTrajectoryBuffer
 from sb3_jax.common.evaluation import evaluate_traj_policy
 from sb3_jax.common.utils import print_y, print_b
 
@@ -49,6 +49,7 @@ def main(args):
 
     # Make Buffer
     train_buff = MTTrajectoryBuffer(
+        buff_cls=TrajectoryBuffer,
         max_length=20,
         max_ep_length=max_ep_length,
         scale=scale,
@@ -70,6 +71,7 @@ def main(args):
     train_env_targets = [env_target/scale for buff in train_buff.buffers]
 
     test_buff = MTTrajectoryBuffer(
+        buff_cls=TrajectoryBuffer,
         max_length=20,
         max_ep_length=max_ep_length,
         scale=scale,
@@ -101,7 +103,10 @@ def main(args):
             batch_size=8,
             gradient_steps=1,
             verbose=1,
-            wandb_log=f'halfcheetah-vel-task{len(train_envs)}',
+            wandb_log=dict(
+                project='sb3-jax-haiku_tests',
+                name=f'dt/mt/{args.type}/cheetah_vel_{len(train_envs)}',
+            ),
             policy_kwargs=dict(
                 lr_warmup=10000,
                 num_tasks=len(train_envs),

@@ -33,7 +33,10 @@ def main(args):
             max_grad_norm=0.8, 
             verbose=1,
             seed=777,
-            wandb_log='test/ppo',
+            wandb_log=dict(
+                project='sb3-jax-haiku_tests',
+                name='ppo',
+            ),
             policy_kwargs=dict(
                 log_std_init=-2, 
                 net_arch=[dict(pi=[256,256], vf=[256,256])],

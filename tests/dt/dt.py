@@ -66,7 +66,10 @@ def main(args):
             learning_rate=1e-4,
             batch_size=256,
             verbose=1,
-            wandb_log=f'test/dt_st/{args.type}',
+            wandb_log=dict(
+                project='sb3-jax-haiku_tests',
+                name=f'dt/st/{args.type}/cheetah_dir',
+            ),
             policy_kwargs=dict(
                 lr_warmup=0,
                 num_tasks=1,

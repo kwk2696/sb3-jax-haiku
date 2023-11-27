@@ -170,6 +170,7 @@ class DT(OfflineAlgorithm):
         
         # wandb configs
         self.wandb_config = dict(
+            algo='dt',
             learning_rate=self.learning_rate,
             batch_size=self.batch_size,
             gamma=self.gamma,

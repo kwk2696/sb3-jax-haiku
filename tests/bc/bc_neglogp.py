@@ -38,7 +38,10 @@ def main(args):
             batch_size=64,
             loss_type='neglogp',
             verbose=1,
-            wandb_log='test/bc_neglogp',
+            wandb_log=dict(
+                project='sb3-jax-haiku_tests',
+                name='bc/neglogp',
+            ),
             policy_kwargs=dict(
                 log_std_init=0.,
                 net_arch=[64, 64],

@@ -39,7 +39,10 @@ def main(args):
             loss_type='mse',
             verbose=1,
             seed=777,
-            wandb_log='test/bc_mse',
+            wandb_log=dict(
+                project='sb3-jax-haiku_tests',
+                name='bc/mse',
+            ),
             policy_kwargs=dict(
                 net_arch=[64, 64],
                 normalization_class=RunningNormLayer,

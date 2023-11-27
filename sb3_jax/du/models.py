@@ -345,9 +345,12 @@ class DiffusionModel(hk.Module):
                                 + jnp.exp(0.5 * self.posterior_log_beta[i]) * noise
                 # TODO: ddim generative process, need to implement noise part & prev scheduler
                 elif self.denoise_type == 'ddim':
-                    # prediction of y_0
-                    pred_y_0 = (y_i - self.sqrtmab[i] * eps) / self.sqrtab[i]
-                    y_i = jnp.sqrt(self.alpha_bar_prev_t[i]) * pred_y_0 + jnp.sqrt(1. - alpha_bar_prev_t[i]) * eps 
+                    if self.predict_epsilon:
+                        pred_y_0 = (y_i - self.sqrtmab[i] * eps) / self.sqrtab[i] # prediction of y_0
+                    else:
+                        pred_y_0 = eps
+                        eps = (y_i - self.sqrtab[i] * pred_y_0) / self.sqrtmab[i]
+                    y_i = jnp.sqrt(self.alpha_bar_prev_t[i]) * pred_y_0 + jnp.sqrt(1. - self.alpha_bar_prev_t[i]) * eps 
 
                 y_i_trace[i-1] = (y_i, eps) # action, eps
             return y_i, y_i_trace

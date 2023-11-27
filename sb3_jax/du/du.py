@@ -150,6 +150,7 @@ class DU(OfflineAlgorithm):
 
         # wandb_config
         self.wandb_config = dict(
+            algo='du',
             learning_rate=self.learning_rate,
             batch_size=self.batch_size,
             gamma=self.gamma,

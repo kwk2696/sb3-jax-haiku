@@ -293,6 +293,7 @@ class PPO(OnPolicyAlgorithm):
         
         # wandb configs
         self.wandb_config = dict(
+            algo='ppo',
             learning_rate=self.learning_rate,
             n_steps=self.n_steps,
             batch_size=self.batch_size,

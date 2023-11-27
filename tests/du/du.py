@@ -37,7 +37,10 @@ def main(args):
             batch_size=256,
             verbose=1,
             seed=777,
-            wandb_log=f'test/du/{args.type}',
+            wandb_log=dict(
+                project=f'sb3-jax-haiku_tests',
+                name=f'du/{args.type}',
+            ),
             policy_kwargs=dict(
                 policy_type=args.type,
                 predict_epsilon=False,

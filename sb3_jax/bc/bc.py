@@ -154,10 +154,11 @@ class BC(OfflineAlgorithm):
         tb_log_name: str = "BC",
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
-    ) -> "PPO":
+    ) -> "BC":
         
         # wandb configs
         self.wandb_config = dict( 
+            algo='bc',
             learning_rate=self.learning_rate,
             batch_size=self.batch_size,
             gamma=self.gamma,
@@ -350,10 +351,11 @@ class OnlineBC(OffPolicyAlgorithm):
         tb_log_name: str = "OnlineBC",
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
-    ) -> OffPolicyAlgorithm:
+    ) -> "OnlineBC":
 
         # wandb configs
-        self.wandb_config = dict( 
+        self.wandb_config = dict(
+            algo='onlinebc',
             learning_rate=self.learning_rate,
             learning_starts=self.learning_starts,
             tau=self.tau,
