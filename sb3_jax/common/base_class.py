@@ -343,8 +343,11 @@ class BaseAlgorithm(ABC):
         
         # Initialize wandb logger
         if self.wandb_log is not None:
-            wandb.init(config=self.wandb_config)
-            wandb.run.name = self.wandb_log
+            wandb.init(
+                project=self.wandb_log['project'],
+                name=self.wandb_log['name'],
+                config=self.wandb_config
+            )
 
         # Create eval callback if needed
         callback = self._init_callback(callback, eval_env, eval_freq, n_eval_episodes, log_path)
