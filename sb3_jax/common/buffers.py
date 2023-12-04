@@ -3,7 +3,7 @@ import pickle
 import time
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Any, Dict, Generator, List, Optional, Union
+from typing import Any, Tuple, Dict, Generator, List, Optional, Union
 
 import jax
 import numpy as np
@@ -771,18 +771,25 @@ class MTTrajectoryBuffer(BaseBuffer):
         self.total_num_trajectories += self.buffers[-1].num_trajectories
         self.total_num_timesteps += self.buffers[-1].num_timesteps
         
-    def set_total_mean(self) -> None:
+    def set_total_mean(self, total_obs: Tuple[float] = None, total_act: Tuple[float] = None) -> None:
         
-        total_obs, total_act = [], []
+        total_obs_, total_act_ = [], []
         for buff in self.buffers:
             for traj in buff.trajectories:
-                total_obs.extend(traj['observations'])
-                total_act.extend(traj['actions'])
-        total_obs_mean, total_obs_std = np.mean(total_obs, axis=0), np.std(total_obs, axis=0) + 1e-6
-        total_act_mean, total_act_std = np.mean(total_act, axis=0), np.std(total_act, axis=0) + 1e-6
+                total_obs_.extend(traj['observations'])
+                total_act_.extend(traj['actions'])
+
+        if total_obs is None:
+            self.total_obs_mean, self.total_obs_std = np.mean(total_obs_, axis=0), np.std(total_obs_, axis=0) + 1e-6
+        else:
+            self.total_obs_mean, self.total_obs_std = total_obs
+        if total_act is None:
+            self.total_act_mean, self.total_act_std = np.mean(total_act_, axis=0), np.std(total_act_, axis=0) + 1e-6
+        else:
+            self.total_act_mean, self.total_act_std = total_act
 
         for buff in self.buffers:
-            buff.obs_mean = total_obs_mean
-            buff.obs_std = total_obs_std
-            buff.act_mean = total_act_mean
-            buff.act_std = total_act_std
+            buff.obs_mean = self.total_obs_mean
+            buff.obs_std = self.total_obs_std
+            buff.act_mean = self.total_act_mean
+            buff.act_std = self.total_act_std

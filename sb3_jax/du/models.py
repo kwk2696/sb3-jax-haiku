@@ -35,8 +35,9 @@ class DiffusionBetaScheduler:
     supported_schedulers = ["linear", "cosine"]
 
     def __init__(self, beta1: float, beta2: float, total_denoise_steps: int, method: str = "cosine"):
-
-        self.beta1 = beta1
+        
+        # 1129: betas not used
+        self.beta1 = beta1 
         self.beta2 = beta2
         self.total_denoise_steps = total_denoise_steps
         self.method = method.lower()
@@ -89,10 +90,14 @@ class DiffusionBetaScheduler:
         )
 
     def linear_schedule(self) -> jnp.ndarray:
-        beta_t = (self.beta2 - self.beta1) * jnp.arange(-1, self.total_denoise_steps, dtype=jnp.float32) \
-                 / (self.total_denoise_steps - 1) + self.beta1
+        scale = 1000 / self.total_denoise_steps
+        beta1 = scale * 0.0001
+        beta2 = scale * 0.02
+        beta_t = (beta2 - beta1) * jnp.arange(-1, self.total_denoise_steps, dtype=jnp.float32) \
+                 / (self.total_denoise_steps - 1) + beta1
         # modifying this so that beta_t[1] = beta1, and beta_t[n_T] = beta2, while beta_t[0] never used
         beta_t = beta_t.at[0].set(0)
+        beta_t = beta_t.at[-1].set(beta2)
         return beta_t
     
     def cosine_schedule(self):
@@ -106,7 +111,6 @@ class DiffusionBetaScheduler:
         beta_t = jnp.clip(beta_t, a_min=0, a_max=0.999)
         beta_t = jnp.concatenate([jnp.array([0]), beta_t])
         return beta_t
-
 
 # ==================== Diffusion Models  ==================== # 
 
