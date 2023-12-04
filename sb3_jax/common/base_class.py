@@ -343,6 +343,9 @@ class BaseAlgorithm(ABC):
         
         # Initialize wandb logger
         if self.wandb_log is not None:
+            self.wandb_config.update({
+                'start_time': time.ctime(),
+            })
             wandb.init(
                 project=self.wandb_log['project'],
                 name=self.wandb_log['name'],
