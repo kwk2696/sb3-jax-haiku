@@ -41,6 +41,9 @@ class DUPolicy(BasePolicy):
         hidden_dim: int = 512,
         n_heads: int = 4, # for transformer
         n_denoise: int = 50,
+        # classifier-free drop
+        cf_weight: float = 1.0,
+        cf_drop_rate: float = 0.0,
         # variance scheduler
         beta_scheduler: str = 'linear',
         beta: Tuple[float,...] = (1e-4, 0.02),
@@ -80,6 +83,8 @@ class DUPolicy(BasePolicy):
         self.hidden_dim = hidden_dim
         self.n_heads = n_heads
         self.n_denoise = n_denoise
+        self.cf_weight = cf_weight
+        self.cf_drop_rate = cf_drop_rate
         self.activation_fn = activation_fn
 
         # ddpm scheduler configs
@@ -101,6 +106,8 @@ class DUPolicy(BasePolicy):
                 embed_dim=self.embed_dim,
                 hidden_dim=self.hidden_dim,
                 n_denoise=self.n_denoise,
+                cf_weight=self.cf_weight,
+                cf_drop_rate=self.cf_drop_rate,
                 optimizer_class=self.optimizer_class,
                 optimizer_kwargs=self.optimizer_kwargs,
                 features_extractor_class=self.features_extractor_class,
@@ -138,6 +145,8 @@ class DUPolicy(BasePolicy):
             ddpm_dict=self.ddpm_dict,
             denoise_type=self.denoise_type,
             predict_epsilon=self.predict_epsilon,
+            cf_weight=self.cf_weight,
+            cf_drop_rate=self.cf_drop_rate,
         )
 
     def _build(self, lr_schedule: Schedule) -> None:

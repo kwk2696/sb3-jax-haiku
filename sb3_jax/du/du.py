@@ -113,7 +113,7 @@ class DU(OfflineAlgorithm):
     ) -> Tuple[jax.Array, Dict[str, jax.Array]]:
 
         batch_size = observations.shape[0]
-        rng_n, rng_t, rng_a = jax.random.split(rng, num=3)
+        rng_n, rng_t, rng_m, rng_a = jax.random.split(rng, num=4)
         
         # randomly sample some noise
         noise = jax.random.normal(rng_n, shape=(batch_size, self.policy.noise_dim))
@@ -121,9 +121,12 @@ class DU(OfflineAlgorithm):
         # add noise to clean target actions
         _ts = jax.random.randint(rng_t, (batch_size, 1), minval=1, maxval=self.policy.n_denoise+1)
         y_t = self.policy.ddpm_dict.sqrtab[_ts] * actions + self.policy.ddpm_dict.sqrtmab[_ts] * noise
-        
+        mask = jax.random.choice(rng_m, jnp.array([0., 1.]), shape=(batch_size, 1), \
+            p=jnp.array([self.policy.cf_drop_rate, 1-self.policy.cf_drop_rate]))
+
         # use diffusion model to predict noise
-        noise_pred, new_state = self.policy._actor(y_t, observations, _ts / self.policy.n_denoise, params, state, rng_a)
+        noise_pred, new_state = self.policy._actor(y_t, observations * mask, _ts / self.policy.n_denoise, params, state, rng_a)
+        
 
         # return mse between predicted and true noise
         if self.policy.predict_epsilon:

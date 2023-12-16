@@ -294,6 +294,8 @@ class DiffusionModel(hk.Module):
         ddpm_dict: DDPMCoefficients,
         denoise_type: str = 'ddpm',
         predict_epsilon: bool = True,
+        cf_weight: float = 1.0,
+        cf_drop_rate: float = 1.0,
     ):
         super().__init__()
         self.du = du 
@@ -302,6 +304,8 @@ class DiffusionModel(hk.Module):
         self.noise_dim = self.du.noise_dim if isinstance(self.du.noise_dim, tuple) else (self.du.noise_dim,)
         self.denoise_type = denoise_type
         self.predict_epsilon = predict_epsilon
+        self.cf_weight = cf_weight
+        self.cf_drop_rate = cf_drop_rate
         
         # scheduler params
         self.alpha_t = ddpm_dict.alpha_t
@@ -338,7 +342,7 @@ class DiffusionModel(hk.Module):
                 t_i = jnp.array([[i / self.n_denoise]])
                 t_i = jnp.repeat(t_i, n_batch, axis=0)
                 noise = jax.random.normal(hk.next_rng_key(), shape=(n_batch,) + self.noise_dim) if (i > 1 and not deterministic) else 0.
-                eps = self.du(y_i, x, t_i)
+                eps = self._predict_eps(y_i, x, t_i, True)
                 
                 # ddpm generative process
                 if self.denoise_type == 'ddpm':
@@ -358,4 +362,18 @@ class DiffusionModel(hk.Module):
 
                 y_i_trace[i-1] = (y_i, eps) # action, eps
             return y_i, y_i_trace
-        return self.du(y_t, x, t)
+        return self._predict_eps(y_t, x, t, False)
+
+    def _predict_eps(
+        self,
+        y_t: jax.Array,
+        x: jax.Array,
+        t: jax.Array,
+        denoise: bool = False,
+    ):
+        eps = self.du(y_t, x, t)
+        if denoise:
+            eps_null = self.du(y_t, x, t)
+            return self.cf_weight * eps + (1 - self.cf_weight) * eps_null
+        return eps
+

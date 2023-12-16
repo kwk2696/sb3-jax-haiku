@@ -49,6 +49,8 @@ def main(args):
                 hidden_dim=128,
                 n_heads=4,
                 n_denoise=50,
+                cf_weight=1.2,
+                cf_drop_rate=0.1,
                 beta_scheduler='linear',
                 beta=(1e-4, 0.02),
                 normalization_class=RunningNormLayer,
