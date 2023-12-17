@@ -373,7 +373,7 @@ class DiffusionModel(hk.Module):
     ):
         eps = self.du(y_t, x, t)
         if denoise:
-            eps_null = self.du(y_t, x, t)
+            eps_null = self.du(y_t, jnp.zeros_like(x), t)
             return self.cf_weight * eps + (1 - self.cf_weight) * eps_null
         return eps
 
