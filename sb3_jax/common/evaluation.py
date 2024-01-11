@@ -9,7 +9,7 @@ import numpy as np
 from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv, VecMonitor, is_vecenv_wrapped
 
 from sb3_jax.common import base_class
-from sb3_jax.common.preprocessing import get_flattened_obs_dim, get_action_dim
+from sb3_jax.common.preprocessing import get_flattened_obs_dim, get_act_dim
 
 
 def evaluate_policy(
@@ -120,7 +120,7 @@ def evaluate_traj_policy(
     random_action: bool = False,
 ) -> Union[Tuple[float, float], Tuple[List[float], List[int]]]:
     """Runs trajectory policy, e.g. DT and returns average reward."""
-    obs_dim, act_dim = get_flattened_obs_dim(env.observation_space), get_action_dim(env.action_space) 
+    obs_dim, act_dim = get_flattened_obs_dim(env.observation_space), get_act_dim(env.action_space) 
 
     episode_rewards = []
     episode_lengths = []

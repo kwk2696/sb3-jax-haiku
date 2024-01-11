@@ -123,7 +123,7 @@ def get_flattened_obs_dim(observation_space: spaces.Space) -> int:
         return spaces.utils.flatdim(observation_space)
 
 
-def get_action_dim(action_space: spaces.Space) -> int:
+def get_act_dim(action_space: spaces.Space) -> int:
     """
     Get the dimension of the action space.
 

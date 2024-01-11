@@ -15,7 +15,7 @@ from sb3_jax.common.distributions import (
     CategoricalDistributionFn, 
     make_proba_distribution,
 )
-from sb3_jax.common.preprocessing import get_action_dim, is_image_space, maybe_transpose, preprocess_obs
+from sb3_jax.common.preprocessing import is_image_space, maybe_transpose, preprocess_obs, get_act_dim
 from sb3_jax.common.jax_layers import (
     init_weights,
     get_actor_critic_arch,
@@ -110,7 +110,7 @@ class BCPolicy(BasePolicy):
             self.normalization_layer = self.normalization_class(self.observation_space.shape, **self.normalization_kwargs)
         
         if isinstance(self.action_dist_fn, DiagGaussianDistributionFn):
-            action_dim = get_action_dim(self.action_space)
+            action_dim = get_act_dim(self.action_space)
             self.dist_kwargs.update(dict(log_std_init=self.log_std_init))
         elif isinstance(self.action_dist_fn, CategoricalDistributionFn):
             action_dim = self.action_space.n

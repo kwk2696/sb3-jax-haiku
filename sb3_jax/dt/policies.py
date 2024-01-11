@@ -13,7 +13,7 @@ from jax import nn
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
 from sb3_jax.dt.gpt2 import GPT2Model, init_embed
-from sb3_jax.common.preprocessing import get_action_dim, get_flattened_obs_dim
+from sb3_jax.common.preprocessing import get_flattened_obs_dim, get_act_dim
 from sb3_jax.common.jax_layers import (
     init_weights, 
     BaseFeaturesExtractor,
@@ -48,7 +48,7 @@ class TrajectoryModel(hk.Module):
     ):
         super().__init__()
         self.observation_dim = get_flattened_obs_dim(observation_space) 
-        self.action_dim = get_action_dim(action_space)
+        self.action_dim = get_act_dim(action_space)
         self.hidden_size = hidden_size
         self.max_length = max_length
         self.max_ep_length = max_ep_length

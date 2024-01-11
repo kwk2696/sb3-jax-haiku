@@ -12,7 +12,7 @@ from jax import nn
 
 from sb3_jax.common.distributions import SquashedDiagGaussianDistributionFn, SquashedDiagGaussianDistribution
 from sb3_jax.common.policies import BasePolicy, ContinuousCritic, register_policy
-from sb3_jax.common.preprocessing import get_action_dim, is_image_space, maybe_transpose, preprocess_obs
+from sb3_jax.common.preprocessing import is_image_space, maybe_transpose, preprocess_obs, get_act_dim
 from sb3_jax.common.jax_layers import (
     init_weights,
     BaseFeaturesExtractor,
@@ -99,7 +99,7 @@ class Actor(BasePolicy):
 
     def _build(self, actor_kwargs: Dict[str, Any]) -> None:
         if isinstance(self.action_dist_fn, SquashedDiagGaussianDistributionFn):
-            action_dim = get_action_dim(self.action_space)
+            action_dim = get_act_dim(self.action_space)
             actor_kwargs.update(dict(log_std_init=self.log_std_init))
         else:
             raise NotImplementedError("Unsupported distribution '{self.action_dist_fn}'.")

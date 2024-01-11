@@ -11,7 +11,7 @@ import jax.numpy as jnp
 from gym import spaces
 
 from stable_baselines3.common.vec_env import VecNormalize
-from sb3_jax.common.preprocessing import get_action_dim, get_obs_shape, get_flattened_obs_dim
+from sb3_jax.common.preprocessing import get_obs_shape, get_flattened_obs_dim, get_act_dim
 from sb3_jax.common.type_aliases import (
     RolloutBufferSamples,
     ReplayBufferSamples,
@@ -39,7 +39,7 @@ class BaseBuffer(ABC):
         self.obs_shape = get_obs_shape(observation_space)
 
         self.obs_dim = get_flattened_obs_dim(observation_space)
-        self.act_dim = get_action_dim(action_space)
+        self.act_dim = get_act_dim(action_space)
         self.pos = 0
         self.full = False
         self.n_envs = n_envs
