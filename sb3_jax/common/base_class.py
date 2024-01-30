@@ -519,10 +519,16 @@ class BaseAlgorithm(ABC):
         # Do not exclude params if they are specifically included
         if include is not None:
             exclude = exclude.difference(include)
-
+        
         # Remove parameter entries of parameters which are to be excluded
         for param_name in exclude:
             data.pop(param_name, None)
+        
+        print("[Printing Data for Saving]")
+        for d in data.keys():
+            import sys
+            print(d, sys.getsizeof(data[d]))
+        print("[Printing End for Saving]")
 
         # Build dict of state_dicts
         params_to_save = self._save_jax_params()

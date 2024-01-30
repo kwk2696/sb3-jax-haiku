@@ -454,7 +454,6 @@ class TrajectoryBuffer(BaseBuffer):
         self.prompt_trajectories = prompt_trajectories
         self.prompt_episode = prompt_episode
         self.prompt_length = prompt_length
-
         self.setup()
 
     def setup(self) -> None:

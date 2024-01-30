@@ -13,6 +13,10 @@ print_y("alpha_bar_t")
 print(linear_dict.alpha_bar_t)
 print(cosine_dict.alpha_bar_t)
 
+print_y("sqrtab")
+print(linear_dict.sqrtab)
+print(cosine_dict.sqrtab)
+
 print_y("sqrtmab")
 print(linear_dict.sqrtmab)
 print(cosine_dict.sqrtmab)

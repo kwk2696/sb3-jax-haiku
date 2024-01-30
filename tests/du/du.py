@@ -26,7 +26,7 @@ def main(args):
             observation_space=env_train.observation_space,
             action_space=env_train.action_space,
         )
-        buff = buff.load(path='./tests/data/offline_buffer.pkl')
+        buff = buff.load(path='./tests/datasets/offline_buffer.pkl')
 
         # Make DU
         du = DU(
@@ -34,7 +34,7 @@ def main(args):
             env=env_train,
             replay_buffer=buff,
             learning_rate=1e-4,
-            batch_size=256,
+            batch_size=64,
             verbose=1,
             seed=777,
             wandb_log=dict(
