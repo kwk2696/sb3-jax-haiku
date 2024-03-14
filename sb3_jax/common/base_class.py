@@ -525,9 +525,10 @@ class BaseAlgorithm(ABC):
             data.pop(param_name, None)
         
         print("[Printing Data for Saving]")
-        for d in data.keys():
-            import sys
-            print(d, sys.getsizeof(data[d]))
+        print(data.keys())
+        #for d in data.keys():
+        #    import sys
+        #    print(d, sys.getsizeof(data[d]))
         print("[Printing End for Saving]")
 
         # Build dict of state_dicts
