@@ -111,7 +111,6 @@ def kl_divergence(
         ((jnp.square(p_std) + jnp.square(q_mean - p_mean)) / (2 * jnp.square(q_std))) - 0.5, axis=-1)
 
 
-
 # Learning Schedulers for Jax
 def warmup_scheduler(init_value: float, warmup_steps: int) -> Schedule:
     def schedule(count):

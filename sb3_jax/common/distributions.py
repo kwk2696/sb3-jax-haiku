@@ -15,6 +15,7 @@ from jax import nn
 from jax import scipy
 
 from sb3_jax.common.jax_layers import init_weights
+from sb3_jax.common.jax_utils import jax_print
 
 # CAP the standard deviation of actor
 LOG_STD_MAX = 2
@@ -128,7 +129,7 @@ class DiagGaussianDistributionFn(DistributionFn):
     def sample(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: jnp.ndarray) -> jnp.ndarray:
         action_std = jnp.exp(log_std)
         noise = jax.random.normal(key, action_std.shape)
-        return mean_actions + noise * action_std
+        return mean_actions + noise * action_std # reparameterization trick
 
     @partial(jax.jit, static_argnums=0)
     def mode(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
@@ -212,7 +213,7 @@ class CategoricalDistributionFn(DistributionFn):
     @partial(jax.jit, static_argnums=0)
     def sample(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray, key: int) -> jnp.ndarray:
         return jax.random.categorical(key, log_std) # log_std is logprob in Categorical
-    
+
     @partial(jax.jit, static_argnums=0)
     def mode(self, mean_actions: jnp.ndarray, log_std: jnp.ndarray) -> jnp.ndarray:
         return jnp.argmax(mean_actions, axis=1)
